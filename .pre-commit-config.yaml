@@ -1,0 +1,43 @@
+default_language_version:
+  python: python3.12
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+        exclude: ^\.huggingface/
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: end-of-file-fixer
+        exclude: ^(agentgate_claude_code_spec\.md|demo/bundle/)
+      - id: trailing-whitespace
+        exclude: ^(agentgate_claude_code_spec\.md|demo/bundle/)
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.2
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy --strict
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: schema-export
+        name: JSON Schemas in sync with models
+        entry: uv run agentgate schema check
+        language: system
+        files: ^(src/agentgate/schemas/|src/agentgate/schema_export\.py|schemas/)
+        pass_filenames: false

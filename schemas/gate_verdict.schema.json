@@ -1,0 +1,188 @@
+{
+  "$defs": {
+    "SafetyFinding": {
+      "additionalProperties": false,
+      "description": "A safety tripwire hit. Bypasses statistics entirely (C3).",
+      "properties": {
+        "baseline_failed": {
+          "title": "Baseline Failed",
+          "type": "boolean"
+        },
+        "candidate_failed": {
+          "title": "Candidate Failed",
+          "type": "boolean"
+        },
+        "detail": {
+          "additionalProperties": true,
+          "title": "Detail",
+          "type": "object"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "rep": {
+          "title": "Rep",
+          "type": "integer"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "task_id",
+        "rep",
+        "baseline_failed",
+        "candidate_failed"
+      ],
+      "title": "SafetyFinding",
+      "type": "object"
+    },
+    "SuiteRef": {
+      "additionalProperties": false,
+      "description": "Immutable pointer to the exact suite content a run consumed.",
+      "properties": {
+        "content_hash": {
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "n_clusters": {
+          "title": "N Clusters",
+          "type": "integer"
+        },
+        "n_tasks": {
+          "title": "N Tasks",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "content_hash",
+        "n_tasks",
+        "n_clusters"
+      ],
+      "title": "SuiteRef",
+      "type": "object"
+    },
+    "Verdict": {
+      "description": "Per-metric or overall gate outcome (C3).",
+      "enum": [
+        "PASS",
+        "REGRESSION",
+        "INCONCLUSIVE",
+        "UNDERPOWERED",
+        "SAFETY_FAIL",
+        "SKIPPED"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    }
+  },
+  "$id": "https://agentgate.dev/schemas/gate_verdict.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The machine-readable gate decision written to ``gate.json`` (L6).",
+  "properties": {
+    "baseline_run_id": {
+      "title": "Baseline Run Id",
+      "type": "string"
+    },
+    "candidate_run_id": {
+      "title": "Candidate Run Id",
+      "type": "string"
+    },
+    "comparison_id": {
+      "title": "Comparison Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "exit_code": {
+      "maximum": 125,
+      "minimum": 0,
+      "title": "Exit Code",
+      "type": "integer"
+    },
+    "failing_metrics": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Failing Metrics",
+      "type": "array"
+    },
+    "metric_verdicts": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Verdict"
+      },
+      "title": "Metric Verdicts",
+      "type": "object"
+    },
+    "policy_hash": {
+      "default": "",
+      "title": "Policy Hash",
+      "type": "string"
+    },
+    "safety_failures": {
+      "items": {
+        "$ref": "#/$defs/SafetyFinding"
+      },
+      "title": "Safety Failures",
+      "type": "array"
+    },
+    "schema_version": {
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "suite": {
+      "$ref": "#/$defs/SuiteRef"
+    },
+    "summary": {
+      "default": "",
+      "title": "Summary",
+      "type": "string"
+    },
+    "underpowered_metrics": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Underpowered Metrics",
+      "type": "array"
+    },
+    "verdict": {
+      "$ref": "#/$defs/Verdict"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "comparison_id",
+    "created_at",
+    "verdict",
+    "exit_code",
+    "baseline_run_id",
+    "candidate_run_id",
+    "suite"
+  ],
+  "title": "GateVerdict",
+  "type": "object"
+}

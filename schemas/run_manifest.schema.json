@@ -1,0 +1,250 @@
+{
+  "$defs": {
+    "BudgetSpec": {
+      "additionalProperties": false,
+      "description": "Hard caps enforced by the runner (A3.6). Zero means unlimited.",
+      "properties": {
+        "max_cost_usd": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Max Cost Usd",
+          "type": "number"
+        },
+        "max_requests": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Requests",
+          "type": "integer"
+        },
+        "max_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "max_wall_s": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Max Wall S",
+          "type": "number"
+        }
+      },
+      "title": "BudgetSpec",
+      "type": "object"
+    },
+    "ModelRef": {
+      "additionalProperties": false,
+      "description": "A pinned model used in a role. Version pinning is what makes judge drift detectable.",
+      "properties": {
+        "model_id": {
+          "title": "Model Id",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "provider": {
+          "default": "",
+          "title": "Provider",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "agent",
+            "judge",
+            "embedding"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "role",
+        "model_id"
+      ],
+      "title": "ModelRef",
+      "type": "object"
+    },
+    "ProviderMode": {
+      "description": "Execution mode for the provider layer (A5).\n\n``live``   \u2014 call the provider, no cache writes.\n``cache``  \u2014 call the provider, write through to the SQLite cache.\n``replay`` \u2014 cache only; a miss is a hard error. CI default.\n``mock``   \u2014 canned deterministic fixtures; used by unit tests, never touches the network.",
+      "enum": [
+        "live",
+        "cache",
+        "replay",
+        "mock"
+      ],
+      "title": "ProviderMode",
+      "type": "string"
+    },
+    "SuiteRef": {
+      "additionalProperties": false,
+      "description": "Immutable pointer to the exact suite content a run consumed.",
+      "properties": {
+        "content_hash": {
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "n_clusters": {
+          "title": "N Clusters",
+          "type": "integer"
+        },
+        "n_tasks": {
+          "title": "N Tasks",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "content_hash",
+        "n_tasks",
+        "n_clusters"
+      ],
+      "title": "SuiteRef",
+      "type": "object"
+    }
+  },
+  "$id": "https://agentgate.dev/schemas/run_manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Everything needed to reproduce a run byte-for-byte (A3.4).\n\n:attr:`config_hash` deliberately excludes wall-clock and host details so that two runs on\ndifferent machines with the same inputs and the same replay cache hash identically.",
+  "properties": {
+    "agent": {
+      "title": "Agent",
+      "type": "string"
+    },
+    "agentgate_version": {
+      "title": "Agentgate Version",
+      "type": "string"
+    },
+    "base_seed": {
+      "title": "Base Seed",
+      "type": "integer"
+    },
+    "budget": {
+      "$ref": "#/$defs/BudgetSpec"
+    },
+    "config_hash": {
+      "description": "Deterministic hash of :meth:`reproducibility_key`.",
+      "readOnly": true,
+      "title": "Config Hash",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "faults": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Faults",
+      "type": "array"
+    },
+    "git_dirty": {
+      "default": false,
+      "title": "Git Dirty",
+      "type": "boolean"
+    },
+    "git_sha": {
+      "default": "unknown",
+      "title": "Git Sha",
+      "type": "string"
+    },
+    "host": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Platform info. Excluded from config_hash by design.",
+      "title": "Host",
+      "type": "object"
+    },
+    "k": {
+      "minimum": 1,
+      "title": "K",
+      "type": "integer"
+    },
+    "library_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Library Versions",
+      "type": "object"
+    },
+    "mode": {
+      "$ref": "#/$defs/ProviderMode"
+    },
+    "models": {
+      "items": {
+        "$ref": "#/$defs/ModelRef"
+      },
+      "title": "Models",
+      "type": "array"
+    },
+    "notes": {
+      "default": "",
+      "title": "Notes",
+      "type": "string"
+    },
+    "prompt_hashes": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Prompt Hashes",
+      "type": "object"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "suite": {
+      "$ref": "#/$defs/SuiteRef"
+    },
+    "system": {
+      "title": "System",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "created_at",
+    "agentgate_version",
+    "suite",
+    "system",
+    "agent",
+    "k",
+    "base_seed",
+    "mode",
+    "config_hash"
+  ],
+  "title": "RunManifest",
+  "type": "object"
+}

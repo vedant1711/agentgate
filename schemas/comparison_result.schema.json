@@ -1,0 +1,803 @@
+{
+  "$defs": {
+    "EffectSize": {
+      "additionalProperties": false,
+      "description": "Standardised effect size with its kind named, since kinds are not interchangeable.",
+      "properties": {
+        "interpretation": {
+          "default": "",
+          "title": "Interpretation",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "cohens_dz",
+            "odds_ratio",
+            "risk_difference",
+            "cliffs_delta"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "EffectSize",
+      "type": "object"
+    },
+    "Estimate": {
+      "additionalProperties": false,
+      "description": "A point estimate that cannot exist without its uncertainty.\n\n``se`` and the interval may be ``None`` only for degenerate samples (n < 2), in which case\n``method`` records why.",
+      "properties": {
+        "ci_high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ci High"
+        },
+        "ci_level": {
+          "default": 0.95,
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Ci Level",
+          "type": "number"
+        },
+        "ci_low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ci Low"
+        },
+        "method": {
+          "description": "Which interval procedure produced this, e.g. 'wilson'.",
+          "title": "Method",
+          "type": "string"
+        },
+        "n": {
+          "description": "Independent units (tasks, or clusters when clustered).",
+          "minimum": 0,
+          "title": "N",
+          "type": "integer"
+        },
+        "se": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Se"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "method",
+        "n"
+      ],
+      "title": "Estimate",
+      "type": "object"
+    },
+    "JudgeHealth": {
+      "additionalProperties": false,
+      "description": "Judge trustworthiness panel published next to every judge-backed number (D3, D4).",
+      "properties": {
+        "cohens_kappa": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cohens Kappa"
+        },
+        "drift_detail": {
+          "default": "",
+          "title": "Drift Detail",
+          "type": "string"
+        },
+        "drift_detected": {
+          "default": false,
+          "title": "Drift Detected",
+          "type": "boolean"
+        },
+        "judge_model": {
+          "default": "",
+          "title": "Judge Model",
+          "type": "string"
+        },
+        "markdown_correlation": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Markdown Correlation"
+        },
+        "n_calibration_items": {
+          "default": 0,
+          "title": "N Calibration Items",
+          "type": "integer"
+        },
+        "position_flip_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position Flip Rate"
+        },
+        "self_judging": {
+          "default": false,
+          "title": "Self Judging",
+          "type": "boolean"
+        },
+        "spearman_rho": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spearman Rho"
+        },
+        "verbosity_correlation": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verbosity Correlation"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "title": "JudgeHealth",
+      "type": "object"
+    },
+    "MetricComparison": {
+      "additionalProperties": false,
+      "description": "Everything the gate needs to rule on one metric (C2 + C3).",
+      "properties": {
+        "baseline": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "candidate": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "clustered": {
+          "default": false,
+          "title": "Clustered",
+          "type": "boolean"
+        },
+        "correlation": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Pearson r between paired scores \u2014 the variance pairing bought.",
+          "title": "Correlation"
+        },
+        "delta": {
+          "$ref": "#/$defs/Estimate",
+          "description": "Direction-normalised mean difference (candidate - baseline) with CI."
+        },
+        "direction": {
+          "enum": [
+            "higher_is_better",
+            "lower_is_better"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "dtype": {
+          "enum": [
+            "binary",
+            "proportion",
+            "continuous",
+            "count"
+          ],
+          "title": "Dtype",
+          "type": "string"
+        },
+        "effect_size": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EffectSize"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "family": {
+          "$ref": "#/$defs/MetricFamily"
+        },
+        "margin": {
+          "description": "Non-inferiority margin delta_m, always non-negative.",
+          "title": "Margin",
+          "type": "number"
+        },
+        "margin_kind": {
+          "default": "absolute",
+          "enum": [
+            "absolute",
+            "ratio"
+          ],
+          "title": "Margin Kind",
+          "type": "string"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "n_pairs": {
+          "minimum": 0,
+          "title": "N Pairs",
+          "type": "integer"
+        },
+        "noninferiority_test": {
+          "$ref": "#/$defs/PairedTestResult"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        },
+        "p_adj": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Benjamini-Hochberg adjusted p (C3).",
+          "title": "P Adj"
+        },
+        "permutation_test": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PairedTestResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "power": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PowerReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "regression_test": {
+          "$ref": "#/$defs/PairedTestResult"
+        },
+        "verdict": {
+          "$ref": "#/$defs/Verdict",
+          "default": "INCONCLUSIVE"
+        }
+      },
+      "required": [
+        "metric",
+        "family",
+        "dtype",
+        "direction",
+        "n_pairs",
+        "baseline",
+        "candidate",
+        "delta",
+        "margin",
+        "regression_test",
+        "noninferiority_test"
+      ],
+      "title": "MetricComparison",
+      "type": "object"
+    },
+    "MetricFamily": {
+      "description": "Metric families from Part B of the specification.",
+      "enum": [
+        "outcome",
+        "trajectory",
+        "rag",
+        "safety",
+        "efficiency",
+        "reliability"
+      ],
+      "title": "MetricFamily",
+      "type": "string"
+    },
+    "PairedTestResult": {
+      "additionalProperties": false,
+      "description": "Outcome of one hypothesis test on paired differences (C2).",
+      "properties": {
+        "detail": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Detail",
+          "type": "object"
+        },
+        "df": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Df"
+        },
+        "n_pairs": {
+          "minimum": 0,
+          "title": "N Pairs",
+          "type": "integer"
+        },
+        "p_one_sided": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "P One Sided",
+          "type": "number"
+        },
+        "p_two_sided": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P Two Sided"
+        },
+        "selection_reason": {
+          "default": "",
+          "description": "Why this test was chosen (e.g. Shapiro-Wilk p on d_i).",
+          "title": "Selection Reason",
+          "type": "string"
+        },
+        "statistic": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Statistic"
+        },
+        "test": {
+          "description": "mcnemar_exact | paired_t | wilcoxon | permutation",
+          "title": "Test",
+          "type": "string"
+        }
+      },
+      "required": [
+        "test",
+        "p_one_sided",
+        "n_pairs"
+      ],
+      "title": "PairedTestResult",
+      "type": "object"
+    },
+    "PassKPoint": {
+      "additionalProperties": false,
+      "description": "pass@k and pass^k at one value of k (B6, E2).",
+      "properties": {
+        "k": {
+          "minimum": 1,
+          "title": "K",
+          "type": "integer"
+        },
+        "pass_at_k": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "pass_hat_k": {
+          "$ref": "#/$defs/Estimate"
+        }
+      },
+      "required": [
+        "k",
+        "pass_at_k",
+        "pass_hat_k"
+      ],
+      "title": "PassKPoint",
+      "type": "object"
+    },
+    "PowerReport": {
+      "additionalProperties": false,
+      "description": "Power and minimum detectable effect for the paired design (C4).",
+      "properties": {
+        "achieved_power": {
+          "description": "Power to detect the margin at n.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Achieved Power",
+          "type": "number"
+        },
+        "alpha": {
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Alpha",
+          "type": "number"
+        },
+        "mde": {
+          "description": "Smallest detectable effect at target power and n.",
+          "minimum": 0.0,
+          "title": "Mde",
+          "type": "number"
+        },
+        "method": {
+          "default": "",
+          "title": "Method",
+          "type": "string"
+        },
+        "n_pairs": {
+          "minimum": 0,
+          "title": "N Pairs",
+          "type": "integer"
+        },
+        "n_required": {
+          "description": "Pairs needed to detect the configured margin.",
+          "minimum": 0,
+          "title": "N Required",
+          "type": "integer"
+        },
+        "power_target": {
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Power Target",
+          "type": "number"
+        },
+        "sigma_d": {
+          "minimum": 0.0,
+          "title": "Sigma D",
+          "type": "number"
+        }
+      },
+      "required": [
+        "sigma_d",
+        "n_pairs",
+        "alpha",
+        "power_target",
+        "achieved_power",
+        "mde",
+        "n_required"
+      ],
+      "title": "PowerReport",
+      "type": "object"
+    },
+    "ReliabilityReport": {
+      "additionalProperties": false,
+      "description": "The reliability family for one binary base metric.",
+      "properties": {
+        "base_metric": {
+          "title": "Base Metric",
+          "type": "string"
+        },
+        "curve": {
+          "items": {
+            "$ref": "#/$defs/PassKPoint"
+          },
+          "title": "Curve",
+          "type": "array"
+        },
+        "flake_rate": {
+          "$ref": "#/$defs/Estimate"
+        },
+        "flakiest_tasks": {
+          "items": {
+            "$ref": "#/$defs/TaskFlake"
+          },
+          "title": "Flakiest Tasks",
+          "type": "array"
+        },
+        "k_max": {
+          "minimum": 1,
+          "title": "K Max",
+          "type": "integer"
+        },
+        "score_variance": {
+          "default": 0.0,
+          "title": "Score Variance",
+          "type": "number"
+        }
+      },
+      "required": [
+        "base_metric",
+        "k_max",
+        "flake_rate"
+      ],
+      "title": "ReliabilityReport",
+      "type": "object"
+    },
+    "SafetyFinding": {
+      "additionalProperties": false,
+      "description": "A safety tripwire hit. Bypasses statistics entirely (C3).",
+      "properties": {
+        "baseline_failed": {
+          "title": "Baseline Failed",
+          "type": "boolean"
+        },
+        "candidate_failed": {
+          "title": "Candidate Failed",
+          "type": "boolean"
+        },
+        "detail": {
+          "additionalProperties": true,
+          "title": "Detail",
+          "type": "object"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "rep": {
+          "title": "Rep",
+          "type": "integer"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "task_id",
+        "rep",
+        "baseline_failed",
+        "candidate_failed"
+      ],
+      "title": "SafetyFinding",
+      "type": "object"
+    },
+    "SuiteRef": {
+      "additionalProperties": false,
+      "description": "Immutable pointer to the exact suite content a run consumed.",
+      "properties": {
+        "content_hash": {
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "n_clusters": {
+          "title": "N Clusters",
+          "type": "integer"
+        },
+        "n_tasks": {
+          "title": "N Tasks",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "content_hash",
+        "n_tasks",
+        "n_clusters"
+      ],
+      "title": "SuiteRef",
+      "type": "object"
+    },
+    "TaskFlake": {
+      "additionalProperties": false,
+      "description": "A task that succeeded only sometimes \u2014 the CI-killing behaviour (B6).",
+      "properties": {
+        "k": {
+          "minimum": 1,
+          "title": "K",
+          "type": "integer"
+        },
+        "successes": {
+          "minimum": 0,
+          "title": "Successes",
+          "type": "integer"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id",
+        "successes",
+        "k"
+      ],
+      "title": "TaskFlake",
+      "type": "object"
+    },
+    "Verdict": {
+      "description": "Per-metric or overall gate outcome (C3).",
+      "enum": [
+        "PASS",
+        "REGRESSION",
+        "INCONCLUSIVE",
+        "UNDERPOWERED",
+        "SAFETY_FAIL",
+        "SKIPPED"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    }
+  },
+  "$id": "https://agentgate.dev/schemas/comparison_result.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The paired analysis of two runs, before the gate renders its verdict.",
+  "properties": {
+    "baseline_run_id": {
+      "title": "Baseline Run Id",
+      "type": "string"
+    },
+    "candidate_run_id": {
+      "title": "Candidate Run Id",
+      "type": "string"
+    },
+    "clustered": {
+      "default": false,
+      "title": "Clustered",
+      "type": "boolean"
+    },
+    "comparison_id": {
+      "title": "Comparison Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "judge_health": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JudgeHealth"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "k": {
+      "minimum": 1,
+      "title": "K",
+      "type": "integer"
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/MetricComparison"
+      },
+      "title": "Metrics",
+      "type": "array"
+    },
+    "n_clusters": {
+      "default": 0,
+      "title": "N Clusters",
+      "type": "integer"
+    },
+    "reliability_baseline": {
+      "items": {
+        "$ref": "#/$defs/ReliabilityReport"
+      },
+      "title": "Reliability Baseline",
+      "type": "array"
+    },
+    "reliability_candidate": {
+      "items": {
+        "$ref": "#/$defs/ReliabilityReport"
+      },
+      "title": "Reliability Candidate",
+      "type": "array"
+    },
+    "safety_findings": {
+      "items": {
+        "$ref": "#/$defs/SafetyFinding"
+      },
+      "title": "Safety Findings",
+      "type": "array"
+    },
+    "schema_version": {
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "suite": {
+      "$ref": "#/$defs/SuiteRef"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "comparison_id",
+    "created_at",
+    "baseline_run_id",
+    "candidate_run_id",
+    "suite",
+    "k"
+  ],
+  "title": "ComparisonResult",
+  "type": "object"
+}

@@ -1,0 +1,519 @@
+{
+  "$defs": {
+    "FinalStep": {
+      "additionalProperties": false,
+      "description": "The agent's terminal answer.",
+      "properties": {
+        "answer": {
+          "default": "",
+          "title": "Answer",
+          "type": "string"
+        },
+        "duration_ms": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "index": {
+          "description": "Zero-based position in the step list.",
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "final",
+          "default": "final",
+          "title": "Kind",
+          "type": "string"
+        },
+        "span_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OpenTelemetry span id, when tracing.",
+          "title": "Span Id"
+        }
+      },
+      "required": [
+        "index"
+      ],
+      "title": "FinalStep",
+      "type": "object"
+    },
+    "LLMCallStep": {
+      "additionalProperties": false,
+      "description": "One round-trip to the agent's model.",
+      "properties": {
+        "cached": {
+          "default": false,
+          "title": "Cached",
+          "type": "boolean"
+        },
+        "duration_ms": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "finish_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finish Reason"
+        },
+        "index": {
+          "description": "Zero-based position in the step list.",
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "llm_call",
+          "default": "llm_call",
+          "title": "Kind",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "prompt_hash": {
+          "description": "Hash of the exact messages sent; part of the cache key.",
+          "title": "Prompt Hash",
+          "type": "string"
+        },
+        "reasoning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Intermediate reasoning text, scored by trajectory.grounded_reasoning.",
+          "title": "Reasoning"
+        },
+        "response_text": {
+          "default": "",
+          "title": "Response Text",
+          "type": "string"
+        },
+        "span_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OpenTelemetry span id, when tracing.",
+          "title": "Span Id"
+        },
+        "temperature": {
+          "default": 0.0,
+          "title": "Temperature",
+          "type": "number"
+        },
+        "usage": {
+          "$ref": "#/$defs/TokenUsage"
+        }
+      },
+      "required": [
+        "index",
+        "model",
+        "prompt_hash"
+      ],
+      "title": "LLMCallStep",
+      "type": "object"
+    },
+    "RunStatus": {
+      "description": "Terminal state of a single (task, repetition) execution.",
+      "enum": [
+        "completed",
+        "error",
+        "timeout",
+        "max_steps",
+        "budget_exhausted"
+      ],
+      "title": "RunStatus",
+      "type": "string"
+    },
+    "SandboxEvent": {
+      "additionalProperties": false,
+      "description": "A side effect the sandbox recorded, used by goal-state and safety checkers.",
+      "properties": {
+        "confirmed": {
+          "default": false,
+          "description": "Did the agent seek confirmation before a destructive action?",
+          "title": "Confirmed",
+          "type": "boolean"
+        },
+        "destructive": {
+          "default": false,
+          "title": "Destructive",
+          "type": "boolean"
+        },
+        "kind": {
+          "description": "e.g. 'db_write', 'email_sent', 'file_written', 'refund'.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "target": {
+          "default": "",
+          "title": "Target",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "SandboxEvent",
+      "type": "object"
+    },
+    "TokenUsage": {
+      "additionalProperties": false,
+      "description": "Token accounting for a step or a whole trajectory.",
+      "properties": {
+        "completion_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Completion Tokens",
+          "type": "integer"
+        },
+        "prompt_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Prompt Tokens",
+          "type": "integer"
+        }
+      },
+      "title": "TokenUsage",
+      "type": "object"
+    },
+    "ToolCallStep": {
+      "additionalProperties": false,
+      "description": "The agent's request to invoke a tool.",
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        },
+        "call_id": {
+          "title": "Call Id",
+          "type": "string"
+        },
+        "duration_ms": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "index": {
+          "description": "Zero-based position in the step list.",
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "tool_call",
+          "default": "tool_call",
+          "title": "Kind",
+          "type": "string"
+        },
+        "span_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OpenTelemetry span id, when tracing.",
+          "title": "Span Id"
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "call_id",
+        "tool"
+      ],
+      "title": "ToolCallStep",
+      "type": "object"
+    },
+    "ToolResultStep": {
+      "additionalProperties": false,
+      "description": "The sandbox's response to a tool call.",
+      "properties": {
+        "call_id": {
+          "title": "Call Id",
+          "type": "string"
+        },
+        "duration_ms": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "index": {
+          "description": "Zero-based position in the step list.",
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "tool_result",
+          "default": "tool_result",
+          "title": "Kind",
+          "type": "string"
+        },
+        "ok": {
+          "default": true,
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "output": {
+          "default": null,
+          "title": "Output"
+        },
+        "span_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OpenTelemetry span id, when tracing.",
+          "title": "Span Id"
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "call_id",
+        "tool"
+      ],
+      "title": "ToolResultStep",
+      "type": "object"
+    }
+  },
+  "$id": "https://agentgate.dev/schemas/trajectory.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The complete observable record of one (task, repetition) execution.",
+  "properties": {
+    "agent": {
+      "default": "",
+      "description": "Reference-agent id that produced this run.",
+      "title": "Agent",
+      "type": "string"
+    },
+    "ended_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ended At"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "est_cost_usd": {
+      "default": 0.0,
+      "minimum": 0.0,
+      "title": "Est Cost Usd",
+      "type": "number"
+    },
+    "faults": {
+      "description": "Fault-injection knobs active for this execution.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Faults",
+      "type": "array"
+    },
+    "final_answer": {
+      "default": "",
+      "title": "Final Answer",
+      "type": "string"
+    },
+    "final_state": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Sandbox end state compared against the task's goal_state.",
+      "title": "Final State"
+    },
+    "latency_ms": {
+      "default": 0.0,
+      "minimum": 0.0,
+      "title": "Latency Ms",
+      "type": "number"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+    },
+    "rep": {
+      "description": "Repetition index in [0, K).",
+      "minimum": 0,
+      "title": "Rep",
+      "type": "integer"
+    },
+    "retrieved_contexts": {
+      "description": "Chunks the agent retrieved; input to the RAG family.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Retrieved Contexts",
+      "type": "array"
+    },
+    "sandbox_events": {
+      "items": {
+        "$ref": "#/$defs/SandboxEvent"
+      },
+      "title": "Sandbox Events",
+      "type": "array"
+    },
+    "seed": {
+      "description": "Deterministic seed derived from (run, task, rep).",
+      "title": "Seed",
+      "type": "integer"
+    },
+    "started_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Started At"
+    },
+    "status": {
+      "$ref": "#/$defs/RunStatus",
+      "default": "completed"
+    },
+    "steps": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "final": "#/$defs/FinalStep",
+            "llm_call": "#/$defs/LLMCallStep",
+            "tool_call": "#/$defs/ToolCallStep",
+            "tool_result": "#/$defs/ToolResultStep"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/LLMCallStep"
+          },
+          {
+            "$ref": "#/$defs/ToolCallStep"
+          },
+          {
+            "$ref": "#/$defs/ToolResultStep"
+          },
+          {
+            "$ref": "#/$defs/FinalStep"
+          }
+        ]
+      },
+      "title": "Steps",
+      "type": "array"
+    },
+    "system": {
+      "description": "System-under-test label, e.g. 'baseline' or 'candidate'.",
+      "title": "System",
+      "type": "string"
+    },
+    "task_id": {
+      "title": "Task Id",
+      "type": "string"
+    },
+    "usage": {
+      "$ref": "#/$defs/TokenUsage"
+    }
+  },
+  "required": [
+    "task_id",
+    "rep",
+    "seed",
+    "system"
+  ],
+  "title": "Trajectory",
+  "type": "object"
+}

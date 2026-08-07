@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+
+# Runtime artifacts (regenerable; the demo bundle is committed separately)
+.agentgate/
+runs/
+*.duckdb.wal
+site/
+
+.DS_Store
+.idea/
+.vscode/

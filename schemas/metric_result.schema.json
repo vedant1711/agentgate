@@ -1,0 +1,140 @@
+{
+  "$defs": {
+    "MetricFamily": {
+      "description": "Metric families from Part B of the specification.",
+      "enum": [
+        "outcome",
+        "trajectory",
+        "rag",
+        "safety",
+        "efficiency",
+        "reliability"
+      ],
+      "title": "MetricFamily",
+      "type": "string"
+    }
+  },
+  "$id": "https://agentgate.dev/schemas/metric_result.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One metric's score for one (task, repetition) sample.\n\n``value`` is ``None`` whenever ``status`` is not ``\"ok\"``. Skipped samples are excluded\nfrom aggregation rather than treated as zeros \u2014 scoring a missing reference as 0 would\nsilently bias the suite mean downward.",
+  "properties": {
+    "cost_tokens": {
+      "default": 0,
+      "description": "Tokens spent scoring this sample.",
+      "minimum": 0,
+      "title": "Cost Tokens",
+      "type": "integer"
+    },
+    "detail": {
+      "additionalProperties": true,
+      "description": "Audit trail: what matched, what didn't, and why.",
+      "title": "Detail",
+      "type": "object"
+    },
+    "direction": {
+      "default": "higher_is_better",
+      "enum": [
+        "higher_is_better",
+        "lower_is_better"
+      ],
+      "title": "Direction",
+      "type": "string"
+    },
+    "dtype": {
+      "enum": [
+        "binary",
+        "proportion",
+        "continuous",
+        "count"
+      ],
+      "title": "Dtype",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "family": {
+      "$ref": "#/$defs/MetricFamily"
+    },
+    "judge_samples": {
+      "description": "J judge draws for this item (C5).",
+      "items": {
+        "type": "number"
+      },
+      "title": "Judge Samples",
+      "type": "array"
+    },
+    "judge_variance": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Within-item judge variance, folded into the metric SE (C5).",
+      "title": "Judge Variance"
+    },
+    "metric": {
+      "title": "Metric",
+      "type": "string"
+    },
+    "rep": {
+      "minimum": 0,
+      "title": "Rep",
+      "type": "integer"
+    },
+    "status": {
+      "default": "ok",
+      "enum": [
+        "ok",
+        "skipped",
+        "error"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "system": {
+      "title": "System",
+      "type": "string"
+    },
+    "task_id": {
+      "title": "Task Id",
+      "type": "string"
+    },
+    "value": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Value"
+    }
+  },
+  "required": [
+    "metric",
+    "task_id",
+    "rep",
+    "system",
+    "family",
+    "dtype"
+  ],
+  "title": "MetricResult",
+  "type": "object"
+}

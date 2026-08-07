@@ -1,0 +1,179 @@
+{
+  "$defs": {
+    "GatedMetric": {
+      "additionalProperties": false,
+      "description": "One metric the gate rules on, with its non-inferiority margin.\n\nExactly one of ``margin`` (absolute, in metric units) or ``margin_ratio`` (multiplicative,\nfor lower-is-better metrics like latency) must be set.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "k": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Which k to gate on for reliability.pass_hat_k.",
+          "title": "K"
+        },
+        "margin": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Absolute non-inferiority margin delta_m in the metric's own units.",
+          "title": "Margin"
+        },
+        "margin_ratio": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multiplicative margin for scale metrics, e.g. 1.25 = 'up to 25% slower'.",
+          "title": "Margin Ratio"
+        },
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric"
+      ],
+      "title": "GatedMetric",
+      "type": "object"
+    }
+  },
+  "$id": "https://agentgate.dev/schemas/gate_policy.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Full gate configuration.",
+  "properties": {
+    "allow_self_judging": {
+      "default": false,
+      "description": "Override the judge/agent family independence rule (D3).",
+      "title": "Allow Self Judging",
+      "type": "boolean"
+    },
+    "alpha": {
+      "default": 0.05,
+      "description": "Per-test significance level.",
+      "exclusiveMaximum": 1.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Alpha",
+      "type": "number"
+    },
+    "bootstrap_iters": {
+      "default": 10000,
+      "minimum": 1000,
+      "title": "Bootstrap Iters",
+      "type": "integer"
+    },
+    "fdr_q": {
+      "default": 0.05,
+      "description": "Benjamini-Hochberg FDR level across metrics.",
+      "exclusiveMaximum": 1.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Fdr Q",
+      "type": "number"
+    },
+    "gated_metrics": {
+      "items": {
+        "$ref": "#/$defs/GatedMetric"
+      },
+      "title": "Gated Metrics",
+      "type": "array"
+    },
+    "min_pairs": {
+      "default": 5,
+      "description": "Below this many paired tasks, no verdict is claimed.",
+      "minimum": 2,
+      "title": "Min Pairs",
+      "type": "integer"
+    },
+    "normality_alpha": {
+      "default": 0.05,
+      "description": "Shapiro-Wilk threshold for auto-selecting Wilcoxon over paired t (C2).",
+      "exclusiveMaximum": 1.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Normality Alpha",
+      "type": "number"
+    },
+    "permutation_iters": {
+      "default": 20000,
+      "minimum": 1000,
+      "title": "Permutation Iters",
+      "type": "integer"
+    },
+    "power_target": {
+      "default": 0.8,
+      "exclusiveMaximum": 1.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Power Target",
+      "type": "number"
+    },
+    "require_judge_kappa": {
+      "default": 0.6,
+      "description": "Judge-human agreement floor before a judge may back a gated metric (D4).",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Require Judge Kappa",
+      "type": "number"
+    },
+    "safety_tripwires": {
+      "description": "Metrics that fail the gate on any new failure, bypassing statistics.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Safety Tripwires",
+      "type": "array"
+    },
+    "schema_version": {
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "underpowered_behavior": {
+      "default": "warn",
+      "description": "'warn' passes an underpowered suite with a banner; 'strict' mode fails it.",
+      "enum": [
+        "warn",
+        "fail"
+      ],
+      "title": "Underpowered Behavior",
+      "type": "string"
+    },
+    "use_clustered_se": {
+      "default": true,
+      "description": "Use cluster-robust SEs when the suite declares clusters.",
+      "title": "Use Clustered Se",
+      "type": "boolean"
+    }
+  },
+  "title": "GatePolicy",
+  "type": "object"
+}

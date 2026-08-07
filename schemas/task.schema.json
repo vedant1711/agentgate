@@ -1,0 +1,458 @@
+{
+  "$defs": {
+    "ArgComparator": {
+      "additionalProperties": false,
+      "description": "How a single tool-call argument is compared against its reference value (B2).",
+      "properties": {
+        "case_sensitive": {
+          "default": true,
+          "title": "Case Sensitive",
+          "type": "boolean"
+        },
+        "kind": {
+          "default": "exact",
+          "enum": [
+            "exact",
+            "numeric",
+            "regex",
+            "semantic",
+            "ignore"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Regex source for kind='regex'.",
+          "title": "Pattern"
+        },
+        "threshold": {
+          "default": 0.8,
+          "description": "Cosine floor for kind='semantic'.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Threshold",
+          "type": "number"
+        },
+        "tolerance": {
+          "default": 0.0,
+          "description": "Absolute tolerance for kind='numeric'.",
+          "minimum": 0.0,
+          "title": "Tolerance",
+          "type": "number"
+        }
+      },
+      "title": "ArgComparator",
+      "type": "object"
+    },
+    "CheckerSpec": {
+      "additionalProperties": false,
+      "description": "Programmatic success checker for ``outcome.task_success`` (B1).",
+      "properties": {
+        "name": {
+          "description": "Registered checker id, e.g. 'goal_state' or 'answer_match'.",
+          "title": "Name",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "CheckerSpec",
+      "type": "object"
+    },
+    "Difficulty": {
+      "description": "Author-declared task difficulty, used for stratified reporting only.",
+      "enum": [
+        "easy",
+        "medium",
+        "hard"
+      ],
+      "title": "Difficulty",
+      "type": "string"
+    },
+    "InjectionProbe": {
+      "additionalProperties": false,
+      "description": "A planted indirect prompt injection and the observable that proves compliance (B4).",
+      "properties": {
+        "compliance_signal": {
+          "description": "Substring/tool name whose presence proves the agent obeyed the injection.",
+          "title": "Compliance Signal",
+          "type": "string"
+        },
+        "payload": {
+          "description": "Adversarial instruction planted in a tool output/document.",
+          "title": "Payload",
+          "type": "string"
+        },
+        "planted_in": {
+          "description": "Tool name or document id carrying the payload.",
+          "title": "Planted In",
+          "type": "string"
+        },
+        "signal_kind": {
+          "default": "output_substring",
+          "enum": [
+            "output_substring",
+            "tool_call",
+            "regex"
+          ],
+          "title": "Signal Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "payload",
+        "planted_in",
+        "compliance_signal"
+      ],
+      "title": "InjectionProbe",
+      "type": "object"
+    },
+    "ReferenceSpec": {
+      "additionalProperties": false,
+      "description": "Everything a task declares as ground truth.\n\nWhich metrics are eligible for a task is derived from which of these fields are populated\n(see :class:`agentgate.schemas.common.Requirement`).",
+      "properties": {
+        "accepted_answers": {
+          "description": "Additional strings that count as exact matches.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Accepted Answers",
+          "type": "array"
+        },
+        "answer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answer"
+        },
+        "canary_pii": {
+          "description": "Planted PII strings that must never reach the output.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Canary Pii",
+          "type": "array"
+        },
+        "contexts": {
+          "description": "Gold retrieval contexts for the RAG family.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Contexts",
+          "type": "array"
+        },
+        "forbidden_tools": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Forbidden Tools",
+          "type": "array"
+        },
+        "goal_state": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "tau-bench-style annotated end state for the sandbox checker.",
+          "title": "Goal State"
+        },
+        "injection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InjectionProbe"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "numeric_answer": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Numeric Answer"
+        },
+        "numeric_tolerance": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Numeric Tolerance",
+          "type": "number"
+        },
+        "output_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "JSON Schema for outcome.schema_compliant.",
+          "title": "Output Schema"
+        },
+        "trajectory": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReferenceTrajectory"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "unanswerable": {
+          "default": false,
+          "description": "Abstention check: the correct behaviour is to refuse.",
+          "title": "Unanswerable",
+          "type": "boolean"
+        }
+      },
+      "title": "ReferenceSpec",
+      "type": "object"
+    },
+    "ReferenceStep": {
+      "additionalProperties": false,
+      "description": "One step of a gold trajectory.\n\nA step lists *allowed alternatives* rather than a single tool, so a task can declare\n``search_web`` and ``search_docs`` equivalent. Steps carrying the same ``group`` may be\nsatisfied in any relative order; ``optional`` steps never count against recall.",
+      "properties": {
+        "arg_comparators": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ArgComparator"
+          },
+          "title": "Arg Comparators",
+          "type": "object"
+        },
+        "args": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Expected argument subset. Keys absent here are not scored.",
+          "title": "Args"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Unordered-group id; steps sharing an id may occur in any order.",
+          "title": "Group"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "optional": {
+          "default": false,
+          "title": "Optional",
+          "type": "boolean"
+        },
+        "tools": {
+          "description": "Interchangeable tool names for this step.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Tools",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tools"
+      ],
+      "title": "ReferenceStep",
+      "type": "object"
+    },
+    "ReferenceTrajectory": {
+      "additionalProperties": false,
+      "description": "Gold trajectory for a task: an ordered list of steps plus matching policy.",
+      "properties": {
+        "allow_extra_calls": {
+          "default": true,
+          "description": "If False, any unreferenced predicted call breaks in_order/any_order match.",
+          "title": "Allow Extra Calls",
+          "type": "boolean"
+        },
+        "required_step_count": {
+          "description": "Number of non-optional reference steps (the denominator for recall).",
+          "readOnly": true,
+          "title": "Required Step Count",
+          "type": "integer"
+        },
+        "required_tools": {
+          "description": "Tools scored by trajectory.single_tool_use[T].",
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Tools",
+          "type": "array"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/ReferenceStep"
+          },
+          "title": "Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "required_step_count"
+      ],
+      "title": "ReferenceTrajectory",
+      "type": "object"
+    }
+  },
+  "$id": "https://agentgate.dev/schemas/task.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A single evaluation task instance.",
+  "properties": {
+    "checker": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CheckerSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "cluster_id": {
+      "description": "Tasks sharing a cluster are statistically dependent (C1.3). Use the scenario/template/document they were generated from.",
+      "title": "Cluster Id",
+      "type": "string"
+    },
+    "difficulty": {
+      "$ref": "#/$defs/Difficulty",
+      "default": "medium"
+    },
+    "id": {
+      "pattern": "^[a-zA-Z0-9._:-]+$",
+      "title": "Id",
+      "type": "string"
+    },
+    "inputs": {
+      "additionalProperties": true,
+      "description": "Payload handed to the agent. Must contain at least one of prompt/question.",
+      "title": "Inputs",
+      "type": "object"
+    },
+    "k": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Per-task override of suite K.",
+      "title": "K"
+    },
+    "max_steps": {
+      "default": 12,
+      "minimum": 1,
+      "title": "Max Steps",
+      "type": "integer"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+    },
+    "reference": {
+      "$ref": "#/$defs/ReferenceSpec"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "template": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Template name this task was paraphrased from.",
+      "title": "Template"
+    },
+    "timeout_s": {
+      "default": 120.0,
+      "exclusiveMinimum": 0,
+      "title": "Timeout S",
+      "type": "number"
+    }
+  },
+  "required": [
+    "id",
+    "cluster_id",
+    "inputs"
+  ],
+  "title": "TaskSpec",
+  "type": "object"
+}
