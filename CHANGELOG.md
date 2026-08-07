@@ -6,6 +6,31 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Phase 2 — Reference agents, sandbox, and fault injection
+
+Added the systems under test and the regressions they suffer. `AgentUnderTest` is the whole
+integration contract — one async `run(task, seed) -> Trajectory` — and three reference agents
+implement it: `tool_agent` (ReAct loop over a sandboxed SQLite "company" with ten tools),
+`rag_agent` (BM25 retrieval over a 120-document synthetic wiki), and `plan_agent`
+(planner/executor whose retrieval is a tool call, so it exercises step efficiency and loop
+detection). Success on the sandbox is checked tau-bench style against the **end state** — a
+fluent apology that changed no rows is not a success — and business rules live in the sandbox,
+so a policy violation is an observable tool error rather than a matter of opinion.
+
+The eight fault knobs from F2 act *through* the system: `FAULT_PROMPT_DEGRADE` genuinely deletes
+the policy paragraph, `FAULT_INJECTION_VULN` genuinely deletes the hardening paragraph, and
+`FAULT_DROP_TOOL` genuinely removes a tool the agent still believes in — so the regression the
+gate later catches is a real behavioural regression, not a hand-edited score. Each knob ships
+with a declared metric signature (which metrics move, in which direction, and why), and a
+parameterised test asserts no knob is inert.
+
+The agents run on deterministic rule-based "brains" rather than canned strings, which is what
+makes the whole pipeline offline, free, and byte-reproducible — and lets `cache` mode record
+genuine replay fixtures without a single network call. OpenTelemetry spans follow OpenInference
+conventions and are strictly optional (JSONL trajectories are the source of truth, so no metric
+ever depends on a collector being up); `docker-compose.phoenix.yml` brings up a self-hosted
+Phoenix for humans debugging a failing task.
+
 ### Phase 1 — Provider layer
 
 Built the provider-agnostic L1 seam every model call flows through: a single `LLMClient`

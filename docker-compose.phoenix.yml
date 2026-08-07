@@ -1,0 +1,32 @@
+# Self-hosted Arize Phoenix (OSS) for trace inspection.
+#
+# Entirely optional. AgentGate's metrics never read from Phoenix — JSONL trajectories are the
+# source of truth (A3.1: no paid observability SaaS, and no hard dependency on a collector
+# being up). This exists so a human debugging a failing task can step through the spans.
+#
+#   docker compose -f docker-compose.phoenix.yml up -d
+#   export AGENTGATE_TRACING=1
+#   export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:6006/v1/traces
+#   uv run agentgate run --suite suites/smoke --system baseline --mode mock
+#
+# Then open http://localhost:6006.
+
+services:
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: agentgate-phoenix
+    ports:
+      - "6006:6006"   # UI and OTLP/HTTP collector
+      - "4317:4317"   # OTLP/gRPC collector
+    environment:
+      PHOENIX_WORKING_DIR: /data
+    volumes:
+      - phoenix-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:6006')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  phoenix-data:

@@ -73,6 +73,43 @@ def schema_check(
     console.print(f"[green]ok[/green] {len(EXPORTED_MODELS)} schemas up to date")
 
 
+@app.command("corpus")
+def corpus_build(
+    target: Annotated[
+        Path, typer.Option("--target", "-t", help="Directory to write the wiki corpus into.")
+    ] = Path("datasets/corpus/wiki"),
+) -> None:
+    """Regenerate the synthetic wiki corpus the RAG agents read."""
+    from agentgate.agents.corpus import write_corpus
+
+    count = write_corpus(target)
+    console.print(f"[green]wrote[/green] {count} documents to {target}")
+
+
+@app.command("agents")
+def list_agents() -> None:
+    """List the registered reference agents."""
+    from agentgate.agents.registry import AGENT_CLASSES, agent_names
+
+    table = Table("agent", "description")
+    for name in agent_names():
+        doc = (AGENT_CLASSES[name].__doc__ or "").strip().splitlines()[0]
+        table.add_row(name, doc)
+    console.print(table)
+
+
+@app.command("scenarios")
+def list_scenarios() -> None:
+    """List the fault-injection scenarios and what each simulates."""
+    from agentgate.faults import SIGNATURES, scenario_names
+
+    table = Table("scenario", "knob", "simulates")
+    for name in scenario_names():
+        signature = SIGNATURES[name]
+        table.add_row(name, signature.knob, signature.simulates)
+    console.print(table)
+
+
 def main() -> None:
     """Console-script entry point."""
     app()

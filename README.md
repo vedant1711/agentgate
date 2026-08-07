@@ -54,7 +54,7 @@ Under active construction. See [CHANGELOG.md](CHANGELOG.md) for what has landed.
 |---|---|---|
 | 0 | Repository foundation, schemas, CLI skeleton | ✅ |
 | 1 | Provider layer (live/cache/replay/mock) | ✅ |
-| 2 | Reference agents, sandbox, fault knobs | ⏳ |
+| 2 | Reference agents, sandbox, fault knobs | ✅ |
 | 3 | Runner | ⏳ |
 | 4 | Metrics engine | ⏳ |
 | 5 | Judge subsystem | ⏳ |
