@@ -95,10 +95,15 @@ ignore = [
   "ANN401", # allow typing.Any where genuinely needed (documented at each site)
   "N803",   # statistical code uses uppercase args (N, K, B) deliberately
   "N806",   # ... and uppercase locals for matrices/counts
+  "D107",   # constructor args are documented in the class docstring (Google convention)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["D100", "D101", "D102", "D103", "D104", "ANN201", "ANN001", "ARG001"]
+"tests/**" = [
+  "D100", "D101", "D102", "D103", "D104",
+  "ANN201", "ANN001", "ARG001",
+  "PT018",  # `assert x is not None and x.y == z` is the type-narrowing idiom
+]
 "demo/**" = ["D100", "D103", "ANN201"]
 
 [tool.ruff.lint.pydocstyle]

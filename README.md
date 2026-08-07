@@ -53,7 +53,7 @@ Under active construction. See [CHANGELOG.md](CHANGELOG.md) for what has landed.
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Repository foundation, schemas, CLI skeleton | ✅ |
-| 1 | Provider layer (live/cache/replay/mock) | ⏳ |
+| 1 | Provider layer (live/cache/replay/mock) | ✅ |
 | 2 | Reference agents, sandbox, fault knobs | ⏳ |
 | 3 | Runner | ⏳ |
 | 4 | Metrics engine | ⏳ |

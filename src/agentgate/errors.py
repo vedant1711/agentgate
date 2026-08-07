@@ -32,7 +32,17 @@ class ProviderError(AgentGateError):
 
 
 class RateLimitError(ProviderError):
-    """The provider returned 429 / throttled the request."""
+    """The provider returned 429 / throttled the request.
+
+    Args:
+        message: Human-readable detail.
+        retry_after: Seconds the provider asked us to wait, when it said so. The retry policy
+            honours this instead of its own backoff curve, because the provider knows better.
+    """
+
+    def __init__(self, message: str, *, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class JudgeError(AgentGateError):

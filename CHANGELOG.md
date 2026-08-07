@@ -6,6 +6,23 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Phase 1 — Provider layer
+
+Built the provider-agnostic L1 seam every model call flows through: a single `LLMClient`
+composing four execution modes (`live`, `cache`, `replay`, `mock`), a write-through SQLite
+response cache keyed by (model, messages, params, seed), per-provider token-bucket rate
+limiting with concurrency caps, retry with full-jitter exponential backoff, and run-level
+budget caps on requests, tokens, cost, and wall time. Recorded latency is replayed verbatim on
+cache hits, because measuring SQLite lookup speed instead would make `efficiency.latency_ms`
+meaningless in exactly the mode CI uses. Replay mode refuses to fall through to the network, so
+a cache miss is a loud error rather than a silent quota charge; when 429s outlast the retry
+budget the client degrades to replay for the rest of the run (E2 quota safety) instead of
+turning CI red for a reason unrelated to the agent. The catalog carries free-tier limits and a
+price table whose frontier entries exist purely so `efficiency.est_cost_usd` can project
+enterprise cost from a run that cost nothing. Clocks, sleepers, and RNGs are injectable
+throughout, so the whole backoff and rate-limit surface is asserted in 72 tests that never
+sleep and never touch a network.
+
 ### Phase 0 — Repository foundation
 
 Established the repository skeleton and the schema contract every later phase builds on: a uv
