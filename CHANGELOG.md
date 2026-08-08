@@ -6,6 +6,34 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Phase 5 — Judge subsystem
+
+The judge is now treated as an instrument with error rather than an oracle. Five anchored 1-5
+rubrics, each its own criterion with elicited reasoning before the score and JSON-Schema-
+constrained output; **J=3 draws** per item at temperature 0.3, with every draw kept so C5 can
+fold the judge's own measurement variance into the metric's standard error. Malformed judge
+output is retried and then *flagged* — never silently scored zero, which would turn a parsing
+bug into a fabricated regression.
+
+Bias is measured, not assumed away. Pairwise comparisons run in both slot orders and average;
+their disagreement becomes a published **position-flip rate**. Verbosity and markdown-density
+audits run on every judged suite, and a flagged verbosity correlation offers a length-controlled
+re-analysis reported *beside* the raw scores, never instead of them. Judge/agent family
+independence is default-deny, and the override attaches a SELF-JUDGING warning to every report
+that used it.
+
+Verification is the part that matters: the bias machinery is checked against synthetic judges
+whose bias is *programmed*. A judge with an anchored 30% slot-A preference produces a measured
+flip rate of 30%; a verbosity-loving judge trips the audit while an unbiased one does not; and
+Cohen's kappa is checked against hand-computed examples including the 0/0 case the textbook
+formula cannot express.
+
+Calibration (`agentgate label`) measures judge-human agreement with kappa and Spearman rho, and
+the 0.6 kappa floor is enforced: below it a criterion may be reported but may not back a gate. A
+frozen anchor set detects judge drift between runs and banners it, and `agentgate.lock` pins
+model, temperature, J, rubric hash, and anchor hash — reporting exactly which part of the ruler
+moved rather than blocking the run.
+
 ### Phase 4 — Metrics engine
 
 All 42 Part B metrics implemented as plugins behind one protocol: outcome, trajectory, RAG,

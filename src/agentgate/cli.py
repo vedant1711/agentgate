@@ -35,6 +35,10 @@ docs_app = typer.Typer(
     name="docs", help="Generate documentation from the code.", no_args_is_help=True
 )
 app.add_typer(docs_app)
+judge_app = typer.Typer(
+    name="judge", help="Inspect and pin the evaluation instrument.", no_args_is_help=True
+)
+app.add_typer(judge_app)
 
 console = Console()
 
@@ -266,6 +270,131 @@ def docs_metrics(
         console.print(f"[red]stale[/red] {target}; run `agentgate docs metrics`")
         raise typer.Exit(code=1)
     console.print(f"[green]wrote[/green] {write_metrics_doc(target)}")
+
+
+@judge_app.command("rubrics")
+def judge_rubrics() -> None:
+    """List the rubric criteria and their anchored scales."""
+    from agentgate.judge import RUBRICS, rubrics_hash
+
+    table = Table("criterion", "needs", "question")
+    for name, rubric in RUBRICS.items():
+        needs = ", ".join(
+            filter(
+                None,
+                [
+                    "reference" if rubric.needs_reference else "",
+                    "contexts" if rubric.needs_contexts else "",
+                ],
+            )
+        )
+        table.add_row(name, needs or "-", rubric.question)
+    console.print(table)
+    console.print(f"rubrics hash: [bold]{rubrics_hash()}[/bold]")
+
+
+@judge_app.command("lock")
+def judge_lock(
+    judge_model: Annotated[str, typer.Option("--judge-model", help="Judge model to pin.")],
+    path: Annotated[Path, typer.Option("--path", help="Lockfile location.")] = Path(
+        "agentgate.lock"
+    ),
+    anchors: Annotated[
+        Path | None, typer.Option("--anchors", help="Anchor set to hash into the lock.")
+    ] = None,
+    check: Annotated[
+        bool, typer.Option("--check", help="Report differences instead of writing.")
+    ] = False,
+) -> None:
+    """Pin (or verify) the evaluation instrument in ``agentgate.lock``."""
+    from agentgate.judge import AnchorSet, JudgeLock
+
+    anchor_hash = AnchorSet.load(anchors).content_hash() if anchors else ""
+    current = JudgeLock.current(judge_model=judge_model, anchor_hash=anchor_hash)
+    existing = JudgeLock.load(path)
+
+    if check:
+        if existing is None:
+            console.print(f"[red]no lockfile at {path}[/red]; run `agentgate judge lock`")
+            raise typer.Exit(code=1)
+        compatible, changes = existing.is_compatible_with(current)
+        if compatible:
+            console.print("[green]ok[/green] the evaluation instrument is unchanged")
+            return
+        console.print("[yellow]instrument changed since the lockfile was written:[/yellow]")
+        for change in changes:
+            console.print(f"  · {change}")
+        console.print("history recorded under the old lock is not comparable to new runs")
+        raise typer.Exit(code=1)
+
+    if existing is not None:
+        for change in existing.differences(current):
+            console.print(f"[yellow]changing[/yellow] {change}")
+    console.print(f"[green]wrote[/green] {current.save(path)}")
+
+
+@app.command("label")
+def label(
+    label_set: Annotated[
+        str, typer.Option("--set", help="Label set name; written to <dir>/<name>.jsonl.")
+    ] = "calibration",
+    transcript_path: Annotated[
+        Path, typer.Option("--transcript", help="Judge transcript JSON to label against.")
+    ] = Path("datasets/calibration/transcript.json"),
+    directory: Annotated[Path, typer.Option("--dir", help="Where label sets live.")] = Path(
+        "datasets/calibration"
+    ),
+    limit: Annotated[int, typer.Option("--limit", min=1, help="Items to offer this session.")] = 20,
+) -> None:
+    """Hand-label judged items so judge-human agreement can be measured (D4)."""
+    from agentgate.judge import HumanLabel, JudgeTranscript, LabelSet, calibrate
+
+    if not transcript_path.exists():
+        console.print(f"[red]no transcript at {transcript_path}[/red]")
+        console.print("run a judged suite first, or point --transcript at a saved transcript")
+        raise typer.Exit(code=1)
+
+    transcript = JudgeTranscript.model_validate_json(transcript_path.read_text(encoding="utf-8"))
+    target = directory / f"{label_set}.jsonl"
+    labels = LabelSet.load(target, name=label_set)
+    labelled = {item.key for item in labels.labels}
+    pending = [
+        (key, entry) for key, entry in sorted(transcript.entries.items()) if key not in labelled
+    ][:limit]
+
+    if not pending:
+        console.print("[green]nothing left to label[/green]")
+    for index, (key, entry) in enumerate(pending, start=1):
+        console.print(f"\n[bold]{index}/{len(pending)}[/bold] · criterion: {entry.criterion}")
+        console.print(f"judge said: [dim]{entry.mean:.2f}[/dim] (hidden from your judgement above)")
+        console.print(f"[dim]key {key[:12]}[/dim]")
+        raw = typer.prompt("your score 1-5 (or 's' to skip, 'q' to stop)", default="s")
+        if raw.strip().lower() == "q":
+            break
+        if not raw.strip().isdigit():
+            continue
+        score = int(raw)
+        if not 1 <= score <= 5:
+            console.print("[yellow]score must be 1-5; skipping[/yellow]")
+            continue
+        labels.add(
+            HumanLabel(
+                criterion=entry.criterion,
+                prompt=entry.samples[0].reasoning[:200] if entry.samples else "",
+                response="",
+                score=score,
+            )
+        )
+
+    written = labels.save(target)
+    console.print(f"\n[green]saved[/green] {written} labels to {target}")
+    report = calibrate(labels, transcript)
+    for agreement in report.per_criterion:
+        kappa = "n/a" if agreement.cohens_kappa is None else f"{agreement.cohens_kappa:.3f}"
+        rho = "n/a" if agreement.spearman_rho is None else f"{agreement.spearman_rho:.3f}"
+        console.print(f"{agreement.criterion}: n={agreement.n} kappa={kappa} rho={rho}")
+    for warning in report.warnings:
+        console.print(f"[yellow]warning:[/yellow] {warning}")
 
 
 @app.command("corpus")
