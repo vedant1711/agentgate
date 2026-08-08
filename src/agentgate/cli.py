@@ -39,6 +39,12 @@ judge_app = typer.Typer(
     name="judge", help="Inspect and pin the evaluation instrument.", no_args_is_help=True
 )
 app.add_typer(judge_app)
+harness_app = typer.Typer(
+    name="harness",
+    help="The living harness: coverage, planning, and continuous recording.",
+    no_args_is_help=True,
+)
+app.add_typer(harness_app)
 
 console = Console()
 
@@ -667,6 +673,276 @@ def list_scenarios() -> None:
         signature = SIGNATURES[name]
         table.add_row(name, signature.knob, signature.simulates)
     console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# The living harness
+# ---------------------------------------------------------------------------
+
+HARNESS_STORE = Path(".agentgate/harness.duckdb")
+
+
+def _pct(value: float) -> str:
+    """Render a fraction as a percentage."""
+    return f"{value * 100:.0f}%"
+
+
+def _interval(estimate: object) -> str:
+    """Render an estimate's interval, or say plainly that there is none."""
+    low = getattr(estimate, "ci_low", None)
+    high = getattr(estimate, "ci_high", None)
+    if low is None or high is None:
+        return "no interval (n<2)"
+    return f"[{low:.3f}, {high:.3f}]"
+
+
+@harness_app.command("status")
+def harness_status(
+    store: Annotated[Path, typer.Option("--store", help="Harness DuckDB file.")] = HARNESS_STORE,
+) -> None:
+    """Show what the harness has measured so far, and how complete each cell is."""
+    from agentgate.harness import Ledger
+    from agentgate.storage.duckdb_store import RunStore
+
+    with RunStore(store, read_only=True) as run_store:
+        ledger = Ledger.from_store(run_store)
+
+    if not len(ledger):
+        console.print(
+            f"[yellow]nothing recorded yet[/yellow] in {store}. "
+            f"Run [bold]agentgate harness record[/bold] to start."
+        )
+        return
+
+    table = Table("suite", "model", "K", "units", "completed", "scored", "recorded")
+    for suite_name, by_model in sorted(ledger.coverage().items()):
+        for model_id, entry in sorted(by_model.items()):
+            complete = "" if entry.is_complete else " [yellow](partial)[/yellow]"
+            table.add_row(
+                suite_name,
+                model_id,
+                str(entry.cell.k),
+                f"{entry.n_samples}/{entry.expected_samples}{complete}",
+                _pct(entry.completion_rate),
+                "yes" if entry.is_scored else "[yellow]no[/yellow]",
+                entry.recorded_at.strftime("%Y-%m-%d %H:%M"),
+            )
+    console.print(table)
+    console.print(f"{len(ledger)} runs across {len(ledger.models())} models.")
+
+
+@harness_app.command("next")
+def harness_next(
+    minutes: Annotated[float, typer.Option("--minutes", help="Budget; 0 is unlimited.")] = 60.0,
+    k: Annotated[int, typer.Option("--k", min=1, help="Repetitions per task.")] = 3,
+    store: Annotated[Path, typer.Option("--store", help="Harness DuckDB file.")] = HARNESS_STORE,
+    suite_root: Annotated[Path, typer.Option("--suites", help="Suite directory.")] = Path("suites"),
+) -> None:
+    """Show what the harness would record next, and why, without recording anything."""
+    from agentgate.harness import Ledger, plan, suite_sizes
+    from agentgate.providers.models import usable_agent_models
+    from agentgate.storage.duckdb_store import RunStore
+
+    sizes = suite_sizes(suite_root)
+    models = [card.model_id for card in usable_agent_models()]
+    if not models:
+        console.print(
+            "[yellow]no reachable models[/yellow] — run [bold]agentgate models[/bold] to see why."
+        )
+        raise typer.Exit(1)
+
+    with RunStore(store, read_only=True) as run_store:
+        ledger = Ledger.from_store(run_store)
+
+    queued = plan(
+        ledger,
+        suites=sorted(sizes),
+        models=models,
+        k=k,
+        budget_seconds=minutes * 60,
+        sizes=sizes,
+    )
+    table = Table("#", "cell", "tasks", "why", "estimate")
+    for index, planned in enumerate(queued.cells, start=1):
+        table.add_row(
+            str(index),
+            str(planned.cell),
+            str(planned.n_tasks),
+            planned.reason,
+            planned.describe_cost(),
+        )
+    console.print(table)
+    for planned in queued.deferred:
+        console.print(f"[dim]deferred:[/dim] {planned.cell} — {planned.describe_cost()}")
+    console.print(queued.describe())
+
+
+@harness_app.command("record")
+def harness_record(
+    minutes: Annotated[float, typer.Option("--minutes", help="Budget; 0 is unlimited.")] = 60.0,
+    k: Annotated[int, typer.Option("--k", min=1, help="Repetitions per task.")] = 3,
+    store: Annotated[Path, typer.Option("--store", help="Harness DuckDB file.")] = HARNESS_STORE,
+    suite_root: Annotated[Path, typer.Option("--suites", help="Suite directory.")] = Path("suites"),
+    concurrency: Annotated[int, typer.Option("--concurrency", "-j", min=1)] = 3,
+    mode: Annotated[
+        ProviderMode, typer.Option("--mode", help="Provider mode.", case_sensitive=False)
+    ] = ProviderMode.CACHE,
+    seed: Annotated[int, typer.Option("--seed", help="Base seed, held fixed across models.")] = (
+        DEFAULT_BASE_SEED
+    ),
+) -> None:
+    """Record one session of harness work, growing the evidence base.
+
+    Resumable and interruptible: whatever is recorded stays recorded, and the next session picks
+    up where this one stopped.
+    """
+    from agentgate.harness import Ledger, plan, run_session, suite_sizes
+    from agentgate.providers.models import usable_agent_models
+    from agentgate.storage.duckdb_store import RunStore
+
+    sizes = suite_sizes(suite_root)
+    models = [card.model_id for card in usable_agent_models()]
+    if not models:
+        console.print(
+            "[yellow]no reachable models[/yellow] — run [bold]agentgate models[/bold] to see why."
+        )
+        raise typer.Exit(1)
+
+    with RunStore(store, read_only=True) as run_store:
+        ledger = Ledger.from_store(run_store)
+
+    queued = plan(
+        ledger,
+        suites=sorted(sizes),
+        models=models,
+        k=k,
+        budget_seconds=minutes * 60,
+        sizes=sizes,
+    )
+    console.print(queued.describe())
+    if not queued.cells:
+        return
+
+    report = run_session(
+        queued,
+        store_path=store,
+        mode=mode,
+        concurrency=concurrency,
+        base_seed=seed,
+        suite_root=suite_root,
+        announce=console.print,
+    )
+    for outcome in report.failed:
+        console.print(f"[red]failed[/red] {outcome.cell}: {outcome.error}")
+    console.print(report.describe())
+
+
+@app.command("leaderboard")
+def leaderboard(
+    suite: Annotated[str, typer.Option("--suite", help="Suite name to rank on.")],
+    metric: Annotated[str, typer.Option("--metric", help="Metric to rank by.")] = (
+        "outcome.task_success"
+    ),
+    store: Annotated[Path, typer.Option("--store", help="Harness DuckDB file.")] = HARNESS_STORE,
+    include_partial: Annotated[
+        bool, typer.Option("--include-partial", help="Rank incomplete recordings too.")
+    ] = False,
+) -> None:
+    """Rank models into tiers this evidence can actually separate."""
+    from agentgate.harness import build_leaderboard
+    from agentgate.storage.duckdb_store import RunStore
+
+    with RunStore(store, read_only=True) as run_store:
+        board = build_leaderboard(
+            run_store, suite=suite, metric=metric, require_complete=not include_partial
+        )
+
+    table = Table("tier", "model", metric, "95% CI", "tasks", "K", "completed")
+    for item in board.standings:
+        table.add_row(
+            str(item.tier),
+            item.label,
+            f"{item.estimate.value:.3f}",
+            _interval(item.estimate),
+            str(item.n_tasks),
+            str(item.k),
+            _pct(item.completion_rate),
+        )
+    console.print(table)
+    for model_id, reason in board.excluded:
+        console.print(f"[dim]excluded:[/dim] {model_id} — {reason}")
+    console.print(board.verdict())
+
+
+@app.command("versus")
+def versus(
+    suite: Annotated[str, typer.Option("--suite", help="Suite both models ran.")],
+    baseline: Annotated[str, typer.Option("--baseline", help="Reference model id.")],
+    candidate: Annotated[str, typer.Option("--candidate", help="Model judged against it.")],
+    metric: Annotated[str, typer.Option("--metric", help="Metric to compare.")] = (
+        "outcome.task_success"
+    ),
+    store: Annotated[Path, typer.Option("--store", help="Harness DuckDB file.")] = HARNESS_STORE,
+) -> None:
+    """Compare two models with the paired test — more powerful than the leaderboard's intervals."""
+    from agentgate.errors import InsufficientDataError
+    from agentgate.harness import head_to_head
+    from agentgate.storage.duckdb_store import RunStore
+
+    with RunStore(store, read_only=True) as run_store:
+        try:
+            comparison = head_to_head(
+                run_store,
+                suite=suite,
+                baseline_model=baseline,
+                candidate_model=candidate,
+                metric=metric,
+            )
+        except InsufficientDataError as exc:
+            console.print(f"[red]cannot compare:[/red] {exc}")
+            raise typer.Exit(1) from exc
+
+    table = Table(show_header=False, box=None)
+    table.add_row("metric", comparison.metric)
+    table.add_row("baseline", f"{comparison.baseline.value:.3f} {_interval(comparison.baseline)}")
+    table.add_row(
+        "candidate", f"{comparison.candidate.value:.3f} {_interval(comparison.candidate)}"
+    )
+    table.add_row("delta", f"{comparison.delta.value:+.3f} {_interval(comparison.delta)}")
+    table.add_row("analysis units", f"{comparison.analysis_units} (paired)")
+    console.print(table)
+
+
+@app.command("trend")
+def trend(
+    suite: Annotated[str, typer.Option("--suite", help="Suite name.")],
+    model: Annotated[str, typer.Option("--model", help="Model id.")],
+    k: Annotated[int, typer.Option("--k", min=1, help="Repetitions per task.")] = 3,
+    metric: Annotated[str, typer.Option("--metric", help="Metric to trace.")] = (
+        "outcome.task_success"
+    ),
+    store: Annotated[Path, typer.Option("--store", help="Harness DuckDB file.")] = HARNESS_STORE,
+) -> None:
+    """Trace how one model's score on one suite has moved over time."""
+    from agentgate.harness import Cell, build_trend
+    from agentgate.storage.duckdb_store import RunStore
+
+    with RunStore(store, read_only=True) as run_store:
+        history = build_trend(run_store, cell=Cell(suite=suite, model_id=model, k=k), metric=metric)
+
+    table = Table("recorded", "value", "95% CI", "tasks", "run")
+    for point in history.points:
+        table.add_row(
+            point.recorded_at.strftime("%Y-%m-%d %H:%M"),
+            f"{point.estimate.value:.3f}",
+            _interval(point.estimate),
+            str(point.n_tasks),
+            point.run_id,
+        )
+    console.print(table)
+    for movement in history.movements:
+        console.print(f"[dim]{movement.verdict}:[/dim] {movement.describe()}")
+    console.print(history.describe())
 
 
 def main() -> None:

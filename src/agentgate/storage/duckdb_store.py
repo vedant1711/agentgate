@@ -78,6 +78,15 @@ CREATE INDEX IF NOT EXISTS idx_scores_metric ON scores(run_id, metric);
 """
 
 
+def _initialise(target: Path) -> None:
+    """Create an empty database with the schema in place, then release it."""
+    connection = duckdb.connect(str(target))
+    try:
+        connection.execute(_SCHEMA)
+    finally:
+        connection.close()
+
+
 class RunStore:
     """Read/write access to the run database.
 
@@ -92,7 +101,10 @@ class RunStore:
             target = Path(self.path)
             target.parent.mkdir(parents=True, exist_ok=True)
             if read_only and not target.exists():
-                target.touch()
+                # Initialise properly rather than touching an empty file: DuckDB rejects a
+                # zero-byte database, so a bare touch produces exactly the failure it was meant
+                # to avoid. Opening read-write once creates a real, empty, schema-bearing file.
+                _initialise(target)
         self._conn = duckdb.connect(self.path, read_only=read_only)
         if not read_only:
             self._conn.execute(_SCHEMA)

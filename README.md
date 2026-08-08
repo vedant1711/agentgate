@@ -71,6 +71,32 @@ uv run agentgate --help
 uv run agentgate models          # which models are reachable right now, and why the rest are not
 ```
 
+## The living harness
+
+AgentGate keeps running. It records models against suites over time, into one growing store, and
+answers the standing question: what do we know, how sure are we, and what should we measure next.
+
+```bash
+agentgate harness status                       # coverage: what has been measured, how completely
+agentgate harness next --minutes 60            # what it would record next, and why
+agentgate harness record --minutes 60          # record a session; resumable and interruptible
+agentgate leaderboard --suite tau2_retail      # models ranked into separable tiers
+agentgate versus --suite tau2_retail --baseline A --candidate B   # the paired test
+agentgate trend --suite tau2_retail --model M  # how one model has moved over time
+```
+
+**The leaderboard reports tiers, not positions.** A model joins the current tier while its
+confidence interval overlaps the tier leader's; within a tier the honest answer is *we cannot
+separate these*. Ranking 1, 2, 3 by point estimate would assert an ordering between every adjacent
+pair at no stated confidence — the exact error the gate exists to prevent in CI.
+
+That rule is deliberately conservative: non-overlapping intervals imply a real difference, but
+overlapping ones do not imply its absence. `agentgate versus` answers properly with the paired
+test on the tasks both models ran, which is strictly more powerful.
+
+`agentgate trend` applies the same standard over time, and refuses to draw a line across a suite
+whose content hash changed — those scores answer different questions.
+
 ## Suites
 
 | Suite | Tasks | Clusters | Ground truth | Agent |

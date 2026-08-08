@@ -6,6 +6,49 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Phase 8 — The living harness
+
+AgentGate is meant to keep running, not to produce one report and stop. `agentgate.harness` is the
+layer that makes that true: it tracks what has been measured, decides what to measure next under a
+wall-clock budget, records it, and ranks the results without overclaiming.
+
+**The leaderboard is the interesting part, because it is where this project could most easily
+betray its own thesis.** Sorting models by point estimate and printing 1, 2, 3 asserts an ordering
+between every adjacent pair — a large family of comparisons, each at no stated confidence, on
+samples far too small to support them. So `agentgate leaderboard` ranks into **tiers**: a model
+joins the current tier while its interval overlaps the tier leader's, and within a tier the answer
+is *we cannot separate these*.
+
+Two details make the tiering honest rather than decorative:
+
+- **Overlap is compared against the tier leader, never the predecessor.** Chained overlap is not
+  transitive: a can overlap b and b overlap c while a and c are disjoint, and predecessor-chaining
+  would collapse all three into one tier that asserts a and c are indistinguishable. There is a
+  test for exactly this.
+- **The rule is conservative in a stated direction.** Non-overlapping intervals imply a real
+  difference; overlapping ones do *not* imply the absence of one, because pairing removes the
+  between-task variance that dominates both marginal intervals. So `agentgate versus` runs the
+  proper paired test on the tasks both models ran, and the leaderboard's own verdict line points
+  you there whenever a tier holds more than one model.
+
+`agentgate trend` applies the same rule over time: movement is reported only when consecutive
+intervals fail to overlap, and a suite whose content hash changed between two recordings breaks the
+trend rather than having a line drawn through it — those scores answer different questions.
+
+`agentgate harness next` plans work breadth-first, which is a statistical claim and not a
+preference: an unmeasured model carries unbounded uncertainty, a partially measured one merely wide
+uncertainty, so breadth removes more uncertainty per minute until every cell is touched once.
+Models with no measured throughput are deferred rather than guessed at. The planner's own output is
+the clearest argument for the cache/replay design — on this laptop `qwen3:4b` against the τ² suite
+estimates at **27.8 hours**, while `llama3.2:3b` against the smoke suite is four minutes.
+
+The ledger is **derived from the run store, not maintained alongside it**, so it cannot drift from
+the runs it describes and there is no bookkeeping file to corrupt.
+
+Fixed while building this: `RunStore(..., read_only=True)` created an empty file when the database
+was absent, and DuckDB rejects a zero-byte database — the touch produced exactly the failure it was
+meant to prevent. It now initialises a real, schema-bearing file.
+
 ### Phase 8 — Real models on a real benchmark
 
 Two of the honest blockers in the Phase 7 write-up are now closed.
