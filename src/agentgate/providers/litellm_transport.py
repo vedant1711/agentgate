@@ -73,7 +73,7 @@ class LiteLLMTransport:
             kwargs["response_format"] = request.response_format
         if request.stop:
             kwargs["stop"] = request.stop
-        if provider_of(request.model) == "ollama":
+        if provider_of(request.model).startswith("ollama"):
             kwargs.setdefault("api_base", ollama_base_url())
         kwargs.update(request.extra)
         return kwargs

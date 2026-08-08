@@ -53,6 +53,8 @@ PRICE_TABLE: Final[dict[str, ModelPrice]] = {
     "cerebras/": FREE,
     "openrouter/": ModelPrice(note="free-tier OpenRouter models only; paid slugs are rejected"),
     "ollama/": ModelPrice(note="local inference — electricity only"),
+    "ollama_chat/": ModelPrice(note="local inference — electricity only"),
+    "nvidia_nim/": ModelPrice(note="NVIDIA build.nvidia.com free tier"),
     "mock/": ModelPrice(note="deterministic fixtures"),
     # --- reference prices for enterprise projection only (never billed here) ---
     "gpt-4o": ModelPrice(prompt_per_mtok=2.50, completion_per_mtok=10.00, note="projection only"),
@@ -68,17 +70,34 @@ PRICE_TABLE: Final[dict[str, ModelPrice]] = {
 }
 
 PROVIDER_LIMITS: Final[dict[str, ProviderLimits]] = {
+    # Free-tier ceilings, set deliberately below the published limit. Exceeding a free tier
+    # costs a whole run; under-using one costs a few seconds.
     "groq": ProviderLimits(requests_per_minute=28.0, burst=4, max_concurrency=4),
     "gemini": ProviderLimits(requests_per_minute=14.0, burst=2, max_concurrency=2),
+    "nvidia_nim": ProviderLimits(requests_per_minute=36.0, burst=4, max_concurrency=4),
     "cerebras": ProviderLimits(requests_per_minute=28.0, burst=4, max_concurrency=4),
     "openrouter": ProviderLimits(requests_per_minute=18.0, burst=3, max_concurrency=3),
-    "ollama": ProviderLimits(requests_per_minute=600.0, burst=8, max_concurrency=2),
+    # Local inference has no quota, but it is compute-bound: a second concurrent request on a
+    # laptop makes both slower rather than finishing sooner.
+    "ollama": ProviderLimits(requests_per_minute=600.0, burst=8, max_concurrency=1),
+    "ollama_chat": ProviderLimits(requests_per_minute=600.0, burst=8, max_concurrency=1),
     MOCK_PROVIDER: ProviderLimits(requests_per_minute=1_000_000.0, burst=1024, max_concurrency=64),
 }
 
 DEFAULT_LIMITS: Final = ProviderLimits()
 
-_KNOWN_PREFIXES: Final = ("groq", "gemini", "cerebras", "openrouter", "ollama", MOCK_PROVIDER)
+_KNOWN_PREFIXES: Final = (
+    "groq",
+    "gemini",
+    "nvidia_nim",
+    "cerebras",
+    "openrouter",
+    # LiteLLM routes Ollama tool-calling through `ollama_chat/`, not `ollama/`. Both are known
+    # so a model id written either way lands on the right rate limiter.
+    "ollama",
+    "ollama_chat",
+    MOCK_PROVIDER,
+)
 
 
 def provider_of(model: str) -> str:

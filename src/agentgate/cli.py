@@ -409,6 +409,56 @@ def plan(
             console.print("[green]adequately powered[/green] for the target you named")
 
 
+@app.command("models")
+def list_models(
+    agents_only: Annotated[
+        bool, typer.Option("--agents-only", help="Show only models that can call tools.")
+    ] = False,
+    suite: Annotated[
+        Path | None, typer.Option("--suite", help="Estimate recording time for this suite.")
+    ] = None,
+    check: Annotated[
+        bool, typer.Option("--check/--no-check", help="Probe the local Ollama daemon.")
+    ] = True,
+) -> None:
+    """Show which models this harness can drive right now, and what is missing."""
+    from agentgate.providers.models import CATALOG, all_provider_status, describe_throughput
+
+    statuses = {status.provider: status for status in all_provider_status(check_network=check)}
+
+    providers = Table("provider", "status", "detail")
+    for name, status in sorted(statuses.items()):
+        mark = "[green]ready[/green]" if status.reachable else "[yellow]unavailable[/yellow]"
+        providers.add_row(name, mark, status.reason)
+    console.print(providers)
+
+    n_tasks = k = 0
+    if suite is not None:
+        from agentgate.runner import load_suite
+
+        spec = load_suite(suite)
+        n_tasks, k = len(spec.tasks), spec.default_k
+
+    last_column = "recording cost" if suite is not None else "notes"
+    table = Table("model", "provider", "tools", "ready", last_column)
+    for card in CATALOG:
+        if agents_only and not card.supports_tools:
+            continue
+        status = statuses.get(card.provider)
+        table.add_row(
+            card.model_id,
+            card.provider,
+            "[green]yes[/green]" if card.supports_tools else "[red]no[/red]",
+            "[green]yes[/green]" if status and status.reachable else "[yellow]no[/yellow]",
+            describe_throughput(card, n_tasks=n_tasks, k=k) if suite is not None else card.notes,
+        )
+    console.print(table)
+
+    for entry in statuses.values():
+        if not entry.reachable:
+            console.print(f"[yellow]{entry.provider}[/yellow]: {entry.reason}")
+
+
 @app.command("metrics")
 def list_metrics(
     family: Annotated[
