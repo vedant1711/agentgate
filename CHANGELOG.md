@@ -6,6 +6,29 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Phase 3 — Runner
+
+Added the layer that turns "run this agent" into `N tasks × K repetitions` of reproducible
+evidence: a suite loader that refuses structurally broken YAML and *warns* about statistically
+dubious suites (singleton clusters, missing reference trajectories, a task count too small for
+any interval to mean anything), a scheduler with bounded asyncio concurrency and deterministic
+per-unit seeds derived from `(base_seed, task_id, rep)`, resume-from-partial via JSONL flushed
+as each unit lands, and DuckDB persistence of runs and **per-sample** records — aggregates
+cannot be re-analysed at a different K or margin, and re-analysis is the whole point of the
+interactive demo.
+
+Two decisions are worth naming. Run ids are *derived* from the suite hash, agent, K, seed, mode,
+and active faults rather than generated, so resume needs no state file and re-running the same
+config is a no-op instead of a duplicate. And `efficiency.latency_ms` now scores the sum of
+attributed step durations rather than wall-clock: wall-clock can never replay identically, so a
+gate on it would fire on scheduling noise. Wall time is still recorded, in a field explicitly
+excluded from the analysis payload — which is now a first-class concept (`analysis_payload` /
+`analysis_digest`) defining exactly what AgentGate promises to reproduce.
+
+Pairing guards live here too: `assert_comparable` refuses (never warns) when two runs differ in
+suite content, K, or seed, because a paired test across different task instances is not a paired
+test at all.
+
 ### Phase 2 — Reference agents, sandbox, and fault injection
 
 Added the systems under test and the regressions they suffer. `AgentUnderTest` is the whole

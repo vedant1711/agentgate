@@ -414,6 +414,7 @@
     },
     "latency_ms": {
       "default": 0.0,
+      "description": "Sum of attributed step durations. This, not wall-clock, is what efficiency.latency_ms scores: it is attributable to specific steps and it replays identically from cache, so the metric means the same thing in the mode CI uses.",
       "minimum": 0.0,
       "title": "Latency Ms",
       "type": "number"
@@ -506,6 +507,13 @@
     },
     "usage": {
       "$ref": "#/$defs/TokenUsage"
+    },
+    "wall_ms": {
+      "default": 0.0,
+      "description": "Measured wall-clock duration. Recorded for debugging; excluded from analysis because it is not reproducible.",
+      "minimum": 0.0,
+      "title": "Wall Ms",
+      "type": "number"
     }
   },
   "required": [

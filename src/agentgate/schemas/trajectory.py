@@ -15,6 +15,9 @@ from pydantic import Field
 
 from agentgate.schemas.common import AgentGateModel, FrozenModel
 
+VOLATILE_FIELDS: frozenset[str] = frozenset({"started_at", "ended_at", "wall_ms"})
+"""Trajectory fields excluded from analysis because they can never replay identically."""
+
 
 class RunStatus(StrEnum):
     """Terminal state of a single (task, repetition) execution."""
@@ -150,7 +153,19 @@ class Trajectory(AgentGateModel):
 
     started_at: datetime | None = None
     ended_at: datetime | None = None
-    latency_ms: float = Field(default=0.0, ge=0.0)
+    latency_ms: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Sum of attributed step durations. This, not wall-clock, is what "
+        "efficiency.latency_ms scores: it is attributable to specific steps and it replays "
+        "identically from cache, so the metric means the same thing in the mode CI uses.",
+    )
+    wall_ms: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Measured wall-clock duration. Recorded for debugging; excluded from "
+        "analysis because it is not reproducible.",
+    )
 
     usage: TokenUsage = Field(default_factory=TokenUsage)
     est_cost_usd: float = Field(default=0.0, ge=0.0)
@@ -229,6 +244,22 @@ class Trajectory(AgentGateModel):
             if isinstance(step, ToolResultStep) and step.ok and step.output is not None:
                 bank.append(step.output if isinstance(step.output, str) else repr(step.output))
         return bank
+
+    def analysis_payload(self) -> dict[str, Any]:
+        """Return the trajectory minus wall-clock fields.
+
+        This is the exact input the metrics engine sees, and the unit of AgentGate's
+        reproducibility promise (A3.4): two runs of the same manifest against the same replay
+        cache must produce identical analysis payloads. Timestamps and measured wall time are
+        excluded because they can never be identical and never affect a score.
+        """
+        return self.model_dump(mode="json", exclude=set(VOLATILE_FIELDS))
+
+    def analysis_digest(self) -> str:
+        """Stable hash of :meth:`analysis_payload`."""
+        from agentgate.schemas.common import stable_hash
+
+        return stable_hash(self.analysis_payload())
 
     def add_step(self, step: LLMCallStep | ToolCallStep | ToolResultStep | FinalStep) -> None:
         """Append a step, assigning its index and folding in token usage."""

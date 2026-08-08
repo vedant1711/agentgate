@@ -23,6 +23,7 @@ from agentgate.providers.client import DEFAULT_CACHE_PATH, ClientConfig, LLMClie
 from agentgate.providers.mock import Handler, MockTransport
 from agentgate.providers.types import ChatRequest, ChatResponse
 from agentgate.schemas.common import ProviderMode
+from agentgate.schemas.results import BudgetSpec
 
 AGENT_CLASSES: dict[str, type[BaseAgent]] = {
     ToolAgent.name: ToolAgent,
@@ -62,23 +63,32 @@ def brain_for(agent: str) -> Handler:
     return BRAINS[agent]
 
 
+MOCK_MODEL_PREFIX = "mock/"
+"""Models under this prefix are served by the reference agent's deterministic brain."""
+
+
 def build_client(
     agent: str,
     *,
     mode: ProviderMode = ProviderMode.MOCK,
     cache_path: str | Path = DEFAULT_CACHE_PATH,
     namespace: str = "",
+    budget: BudgetSpec | None = None,
+    model: str = "mock/agent",
 ) -> LLMClient:
-    """Build a provider client wired to ``agent``'s deterministic brain.
+    """Build a provider client for ``agent``.
 
-    In ``cache`` mode the brain's replies are written through to SQLite, which is how the demo's
-    replay fixtures are produced without ever touching a provider.
+    A ``mock/*`` model is served by the agent's deterministic brain; anything else goes to the
+    real provider stack. In ``cache`` mode the brain's replies are written through to SQLite,
+    which is how the demo's replay fixtures are produced without ever touching a provider.
 
     Args:
         agent: Registered agent id.
         mode: Execution mode.
         cache_path: SQLite cache location.
         namespace: Cache-key salt for prompt revisions.
+        budget: Run-level caps enforced on every provider call.
+        model: Model id, which decides whether the brain or a real provider answers.
 
     Returns:
         A configured client.
@@ -87,8 +97,13 @@ def build_client(
         mode=mode,
         cache_path=":memory:" if mode is ProviderMode.MOCK else cache_path,
         namespace=namespace,
+        budget=budget or BudgetSpec(),
     )
-    transport = MockTransport(brain_for(agent), provider="mock")
+    transport = (
+        MockTransport(brain_for(agent), provider="mock")
+        if model.startswith(MOCK_MODEL_PREFIX)
+        else None
+    )
     return LLMClient(config, transport=transport)
 
 
@@ -101,6 +116,7 @@ def build_agent(
     config: AgentConfig | None = None,
     corpus: WikiCorpus | None = None,
     cache_path: str | Path = DEFAULT_CACHE_PATH,
+    budget: BudgetSpec | None = None,
     system: str = "baseline",
 ) -> BaseAgent:
     """Construct a reference agent.
@@ -113,6 +129,7 @@ def build_agent(
         config: Model/loop configuration.
         corpus: Wiki corpus for the retrieval agents.
         cache_path: SQLite cache location for non-mock modes.
+        budget: Run-level caps enforced on every provider call.
         system: System-under-test label recorded on trajectories.
 
     Returns:
@@ -125,9 +142,11 @@ def build_agent(
         msg = f"unknown agent {agent!r}; known agents: {', '.join(agent_names())}"
         raise ConfigError(msg)
     agent_cls = AGENT_CLASSES[agent]
-    resolved_client = client or build_client(agent, mode=mode, cache_path=cache_path)
     agent_config = config or AgentConfig()
     agent_config.system = system
+    resolved_client = client or build_client(
+        agent, mode=mode, cache_path=cache_path, budget=budget, model=agent_config.model
+    )
 
     if issubclass(agent_cls, RagAgent | PlanAgent):
         return agent_cls(

@@ -11,11 +11,14 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from agentgate import __version__
 from agentgate.provenance import git_dirty, git_sha, host_info, library_versions
+from agentgate.runner.config import DEFAULT_BASE_SEED
 from agentgate.schema_export import EXPORTED_MODELS, export_schemas, schemas_are_current
+from agentgate.schemas.common import ProviderMode
 
 app = typer.Typer(
     name="agentgate",
@@ -71,6 +74,128 @@ def schema_check(
         console.print("run [bold]agentgate schema export[/bold] and commit the result")
         raise typer.Exit(code=1)
     console.print(f"[green]ok[/green] {len(EXPORTED_MODELS)} schemas up to date")
+
+
+@app.command()
+def run(
+    suite: Annotated[Path, typer.Option("--suite", "-s", help="Suite file or directory.")],
+    system: Annotated[
+        str, typer.Option("--system", help="System-under-test label, e.g. baseline or candidate.")
+    ] = "baseline",
+    k: Annotated[
+        int | None, typer.Option("--k", help="Repetitions per task. Defaults to the suite's.")
+    ] = None,
+    mode: Annotated[
+        ProviderMode, typer.Option("--mode", help="Provider mode.", case_sensitive=False)
+    ] = ProviderMode.MOCK,
+    agent: Annotated[
+        str | None, typer.Option("--agent", help="Override the suite's declared agent.")
+    ] = None,
+    seed: Annotated[int, typer.Option("--seed", help="Base seed for the run.")] = DEFAULT_BASE_SEED,
+    concurrency: Annotated[int, typer.Option("--concurrency", "-j", min=1)] = 4,
+    model: Annotated[str, typer.Option("--model", help="Agent model id.")] = "mock/agent",
+    faults_from_env: Annotated[
+        bool, typer.Option("--faults-from-env/--no-faults", help="Read FAULT_* knobs from env.")
+    ] = True,
+    max_requests: Annotated[
+        int, typer.Option("--max-requests", min=0, help="Provider request cap; 0 is unlimited.")
+    ] = 0,
+    store: Annotated[
+        Path | None, typer.Option("--store", help="DuckDB file to persist the run into.")
+    ] = None,
+    resume: Annotated[bool, typer.Option("--resume/--no-resume")] = True,
+    run_id: Annotated[
+        str | None, typer.Option("--run-id", help="Override the derived run id.")
+    ] = None,
+) -> None:
+    """Execute a suite against one system and record its trajectories."""
+    import asyncio
+
+    from agentgate.faults import FaultConfig
+    from agentgate.runner import RunConfig, Runner
+    from agentgate.schemas.results import BudgetSpec
+
+    config = RunConfig(
+        suite_path=suite,
+        system=system,
+        agent=agent,
+        k=k,
+        mode=mode,
+        base_seed=seed,
+        concurrency=concurrency,
+        model=model,
+        budget=BudgetSpec(max_requests=max_requests),
+        faults=FaultConfig.from_env() if faults_from_env else FaultConfig(),
+        store_path=store,
+        resume=resume,
+        run_id=run_id,
+    )
+    runner = Runner(config)
+    console.print(
+        f"[bold]{runner.suite.name}@{runner.suite.version}[/bold] "
+        f"· {len(runner.suite.tasks)} tasks x K={runner.k} "
+        f"· agent={runner.agent_name} · mode={mode.value} · system={system}"
+    )
+    if config.faults.enabled:
+        console.print(f"[yellow]faults active:[/yellow] {', '.join(config.faults.active())}")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        console=console,
+        transient=True,
+    ) as bar:
+        tracker = bar.add_task("running", total=len(runner.units()))
+
+        def tick(completed: int, total: int, label: str) -> None:
+            bar.update(tracker, completed=completed, total=total, description=label)
+
+        result = asyncio.run(runner.run(progress=tick))
+
+    for warning in result.warnings:
+        console.print(f"[yellow]warning:[/yellow] {warning}")
+
+    summary = result.summary
+    table = Table(show_header=False, box=None)
+    table.add_row("run id", result.run_id)
+    table.add_row("config hash", result.manifest.config_hash)
+    table.add_row("samples", str(summary.n_samples))
+    table.add_row("status", ", ".join(f"{k}={v}" for k, v in sorted(summary.status_counts.items())))
+    table.add_row("tokens", f"{summary.total_tokens:,}")
+    table.add_row("est. cost", f"${summary.total_cost_usd:.4f}")
+    table.add_row("cache", f"{summary.cache_hits} hits / {summary.cache_misses} misses")
+    table.add_row("wall time", f"{summary.wall_seconds:.2f}s")
+    table.add_row("trajectories", str(config.run_dir(result.run_id) / "trajectories.jsonl"))
+    console.print(table)
+
+
+@app.command("suites")
+def list_suites(
+    root: Annotated[Path, typer.Option("--root", help="Directory to scan.")] = Path("suites"),
+) -> None:
+    """List available suites and any validation warnings."""
+    from agentgate.runner import discover_suites, load_suite, validate_suite
+
+    found = discover_suites(root)
+    if not found:
+        console.print(f"[yellow]no suites found under {root}[/yellow]")
+        raise typer.Exit(code=1)
+    table = Table("suite", "version", "tasks", "clusters", "K", "agent", "warnings")
+    for name, path in found.items():
+        spec = load_suite(path)
+        warnings = validate_suite(spec)
+        table.add_row(
+            name,
+            spec.version,
+            str(len(spec.tasks)),
+            str(spec.n_clusters),
+            str(spec.default_k),
+            spec.agent,
+            str(len(warnings)) if warnings else "-",
+        )
+    console.print(table)
 
 
 @app.command("corpus")

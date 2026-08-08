@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import ClassVar, Protocol, runtime_checkable
 
+from agentgate.errors import BudgetExceededError
 from agentgate.faults.config import FaultConfig
 from agentgate.providers.client import LLMClient
 from agentgate.providers.types import ChatMessage, ChatRequest, ChatResponse
@@ -56,7 +57,14 @@ class AgentUnderTest(Protocol):
     trajectory. See ``examples/integrate_your_agent/`` for a 30-line example.
     """
 
-    name: str
+    @property
+    def name(self) -> str:
+        """Stable identifier recorded on every trajectory.
+
+        Declared read-only so implementations are free to expose it as a ``ClassVar``, an
+        instance attribute, or a property — the harness only ever reads it.
+        """
+        ...
 
     async def run(self, task: TaskSpec, seed: int) -> Trajectory:
         """Execute ``task`` once and return the observable record of what happened."""
@@ -151,6 +159,10 @@ class BaseAgent(ABC):
         with span(f"agent.{self.name}", attributes) as agent_span:
             try:
                 trajectory.final_answer = await self.execute(task, seed, trajectory)
+            except BudgetExceededError:
+                # A budget stop is the harness deciding to halt, not the agent failing. It
+                # propagates so the runner can stop scheduling and keep the completed work.
+                raise
             except StepLimitError:
                 trajectory.status = RunStatus.MAX_STEPS
                 trajectory.error = f"exceeded {self.config.max_steps} steps without answering"
@@ -160,7 +172,8 @@ class BaseAgent(ABC):
                 agent_span.record_error(trajectory.error)
             agent_span.set_attribute(OUTPUT_VALUE, trajectory.final_answer[:2000])
 
-        trajectory.latency_ms = (time.perf_counter() - started) * 1000.0
+        trajectory.wall_ms = (time.perf_counter() - started) * 1000.0
+        trajectory.latency_ms = sum(step.duration_ms for step in trajectory.steps)
         trajectory.ended_at = datetime.now(UTC)
         return trajectory
 
