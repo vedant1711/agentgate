@@ -6,6 +6,38 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Phase 6 — Statistics engine
+
+Part C in full, with every gate-critical formula implemented here rather than imported and every
+docstring citing its source: CLT and Wilson intervals, cluster-robust sandwich SEs, BCa bootstrap
+(resampling at cluster level when clusters exist), exact McNemar, paired t, Wilcoxon, sign-flip
+permutation, Benjamini-Hochberg FDR, non-central-t power and MDE, the unbiased pass@k and pass^k
+estimators, one-way variance decomposition with ICC, and law-of-total-variance propagation of
+judge measurement error.
+
+The analysis unit is the **task**, never the repetition — averaging K repetitions first is what
+keeps intervals honest, since treating repetitions as independent tasks would shrink every
+interval by sqrt(K) for nothing. Non-inferiority is implemented as a shift: testing `d_i + delta`
+against zero is testing `mean(d) > -delta`, which is the hypothesis the gate actually cares
+about, and both one-sided tests are computed so `INCONCLUSIVE` can be *expressed* rather than
+silently collapsed into a pass.
+
+The Monte-Carlo suite (2,000+ replications per case) is the credibility centrepiece and it
+passes: type-I error lands inside [0.03, 0.07] at nominal 0.05, CLT/Wilson/paired coverage inside
+[0.93, 0.97], empirical power within 5 points of the engine's prediction, pass^k mean-unbiased
+where the naive plug-in is measurably biased, naive SEs shown collapsing to 76% coverage under
+clustering while cluster-robust SEs repair it, and pairing's variance reduction growing
+monotonically with correlation — E3's core claim reproduced on data where the correlation is set
+rather than observed.
+
+Two real bugs surfaced from property testing. Wilson's interval failed to contain its own point
+estimate at p = 1 by one ULP, and BH's threshold rule disagreed with its own adjusted p-values at
+the boundary; rejections are now derived from the adjusted values, because a report that prints
+"adjusted p = 0.05, not rejected" at q = 0.05 is indefensible however correct its floating point.
+
+`agentgate plan --target-mde` answers the suite author's question directly: the smoke suite's 8
+tasks can detect 0.147 at 80% power, so a 0.03 target needs about 156.
+
 ### Phase 5 — Judge subsystem
 
 The judge is now treated as an instrument with error rather than an oracle. Five anchored 1-5

@@ -58,7 +58,7 @@ Under active construction. See [CHANGELOG.md](CHANGELOG.md) for what has landed.
 | 3 | Runner | ✅ |
 | 4 | Metrics engine | ✅ |
 | 5 | Judge subsystem | ✅ |
-| 6 | Statistics engine | ⏳ |
+| 6 | Statistics engine | ✅ |
 | 7 | Gate, CI, reporting, demo | ⏳ |
 | 8 | Hardening and comparability | ⏳ |
 | 9 | Public demo deployment | ⏳ |

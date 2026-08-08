@@ -225,6 +225,55 @@ def list_suites(
     console.print(table)
 
 
+@app.command("plan")
+def plan(
+    target_mde: Annotated[
+        float,
+        typer.Option("--target-mde", min=0.0001, help="Smallest regression you want to detect."),
+    ],
+    sigma_d: Annotated[
+        float,
+        typer.Option("--sigma-d", min=0.0, help="SD of per-task differences (from a pilot run)."),
+    ] = 0.15,
+    alpha: Annotated[float, typer.Option("--alpha", min=0.0001, max=0.5)] = 0.05,
+    power: Annotated[float, typer.Option("--power", min=0.5, max=0.999)] = 0.80,
+    suite: Annotated[
+        Path | None,
+        typer.Option("--suite", help="Report what this suite can already detect."),
+    ] = None,
+) -> None:
+    """Tell a suite author how many tasks to write (C4)."""
+    from agentgate.stats import minimum_detectable_effect, paired_power, plan_suite_size
+
+    summary = plan_suite_size(target_mde=target_mde, sigma_d=sigma_d, alpha=alpha, power=power)
+    table = Table(show_header=False, box=None)
+    table.add_row("target MDE", f"{target_mde:.4g}")
+    table.add_row("assumed sigma_d", f"{sigma_d:.4g}")
+    table.add_row("alpha / power", f"{alpha:.3g} / {power:.0%}")
+    table.add_row("[bold]tasks required[/bold]", f"[bold]{int(summary['required_tasks'])}[/bold]")
+    console.print(table)
+
+    if suite is not None:
+        from agentgate.runner import load_suite
+
+        spec = load_suite(suite)
+        n = len(spec.tasks)
+        achievable = minimum_detectable_effect(sigma_d=sigma_d, n=n, alpha=alpha, power=power)
+        achieved = paired_power(effect=target_mde, sigma_d=sigma_d, n=n, alpha=alpha)
+        console.print(
+            f"\n[bold]{spec.name}[/bold] has {n} tasks: it can detect {achievable:.4g} at "
+            f"{power:.0%} power, and has {achieved:.0%} power for your {target_mde:.4g} target."
+        )
+        if achieved < power:
+            shortfall = int(summary["required_tasks"]) - n
+            console.print(
+                f"[yellow]underpowered[/yellow]: write about {shortfall} more task(s), or widen "
+                f"the margin to {achievable:.4g}"
+            )
+        else:
+            console.print("[green]adequately powered[/green] for the target you named")
+
+
 @app.command("metrics")
 def list_metrics(
     family: Annotated[
