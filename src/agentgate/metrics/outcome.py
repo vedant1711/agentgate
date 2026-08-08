@@ -151,11 +151,19 @@ class SemanticSimilarity(BaseMetric):
 
 @register
 class JsonValid(BaseMetric):
-    """Does the answer parse as JSON?"""
+    """Does the answer parse as JSON, on tasks that asked for JSON?
+
+    The requirement is load-bearing. Without it this metric scores every sample in every suite,
+    so a suite whose answers are prose — tau2-bench retail, for one — comes back at 0.009 and
+    looks like a catastrophic formatting failure. It is not a finding about the model; it is the
+    harness asking a question the task never posed. A task declares that it wants JSON by
+    carrying an ``output_schema``, so that is the gate.
+    """
 
     name = "outcome.json_valid"
     family: ClassVar[MetricFamily] = OUTCOME
     dtype: ClassVar[DType] = "binary"
+    requires: ClassVar[set[Requirement]] = {Requirement.OUTPUT_SCHEMA}
     description: ClassVar[str] = "The final answer parses as JSON (fenced code blocks stripped)."
 
     def compute(self, sample: ScoredSample) -> Scored:

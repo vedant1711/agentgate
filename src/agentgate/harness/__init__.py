@@ -7,6 +7,13 @@ we, and what is the most valuable thing to measure next.
 Everything here is derived from the run store, so there is no second source of truth to drift.
 """
 
+from agentgate.harness.export import (
+    DEFAULT_EXPORT,
+    CellSnapshot,
+    MetricSnapshot,
+    build_snapshot,
+    write_snapshot,
+)
 from agentgate.harness.leaderboard import (
     DEFAULT_METRIC,
     Leaderboard,
@@ -30,6 +37,7 @@ from agentgate.harness.trend import (
 )
 
 __all__ = [
+    "DEFAULT_EXPORT",
     "DEFAULT_METRIC",
     "IMPROVED",
     "INCOMPARABLE",
@@ -37,9 +45,11 @@ __all__ = [
     "STABLE",
     "Cell",
     "CellOutcome",
+    "CellSnapshot",
     "Leaderboard",
     "Ledger",
     "LedgerEntry",
+    "MetricSnapshot",
     "Movement",
     "Plan",
     "PlannedCell",
@@ -49,6 +59,7 @@ __all__ = [
     "TrendPoint",
     "assign_tiers",
     "build_leaderboard",
+    "build_snapshot",
     "build_trend",
     "estimate_seconds",
     "head_to_head",
@@ -56,4 +67,5 @@ __all__ = [
     "plan",
     "run_session",
     "suite_sizes",
+    "write_snapshot",
 ]

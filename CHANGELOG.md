@@ -6,6 +6,43 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Phase 8 — The first full baseline, and what it caught
+
+`llama3.2:3b` recorded against all 111 τ² retail tasks at K=3: **333 units, 330 completed,
+708,911 real tokens, 104 minutes.** Every number below is cluster-robust over 111 independent
+clusters, which is why the intervals are narrow enough to be worth reading.
+
+| metric | value | 95% CI |
+|---|---|---|
+| `outcome.task_success` | 0.180 | [0.108, 0.252] |
+| `judge.coherence` | 0.994 | [0.988, 1.000] |
+| `judge.instruction_following` | 0.619 | [0.559, 0.680] |
+| `trajectory.recall` | 0.535 | [0.476, 0.595] |
+| `trajectory.precision` | 0.574 | [0.517, 0.631] |
+| `trajectory.argument_correctness` | 0.145 | [0.116, 0.173] |
+| `trajectory.exact_match` | 0.000 | [0.000, 0.000] |
+| `trajectory.error_recovery_rate` | 0.000 | [0.000, 0.000] |
+| `trajectory.step_efficiency` | 0.766 | [0.711, 0.821] |
+| `trajectory.loop_detected` | 0.000 | [0.000, 0.000] |
+
+**Coherence 0.99 against task success 0.18 is the most valuable result the project has produced.**
+The model is fluent, efficient, and non-looping — it does not flail, it does not loop, it wastes
+almost nothing — and it is wrong four times in five. It calls roughly the right tools (recall 0.54)
+with the wrong arguments (0.15) and never recovers from a tool error. Any evaluation resting on how
+the output *reads* would score this model highly. That gap is the entire argument for the project.
+
+**A defect the run exposed.** `outcome.json_valid` was scoring all 333 samples and failing 99% of
+them — but τ² answers are prose. The metric had no `requires`, so it asked every suite a question
+only some suites pose, and reported a category error as a catastrophic formatting failure. It now
+requires `OUTPUT_SCHEMA`, the way a task declares it wants JSON, and is skipped otherwise. A golden
+case pins the behaviour. This mattered beyond cosmetics: had that metric entered a gated family it
+would have fired spuriously on every prose suite and consumed FDR budget from real findings.
+
+`agentgate harness export` writes a compact snapshot to `results/harness.json`. The store itself is
+not committed — tens of megabytes, regenerable from the cache — but the summary is, so every
+recording session leaves a reviewable diff of what the project learned. Each value carries its
+interval and its n; metrics that did not apply are omitted rather than zero-filled.
+
 ### Phase 8 — The living harness
 
 AgentGate is meant to keep running, not to produce one report and stop. `agentgate.harness` is the

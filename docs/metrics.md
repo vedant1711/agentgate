@@ -21,7 +21,7 @@ Did the task get done? `outcome.task_success` runs the task's programmatic check
 | `outcome.abstained` | binary | lower_is_better | — | The answer declines to answer rather than asserting something. |
 | `outcome.exact_match` | binary | higher_is_better | `reference_answer` | SQuAD-style normalised equality vs the reference answer. |
 | `outcome.f1_token` | proportion | higher_is_better | `reference_answer` | Best token-level F1 across all accepted reference answers. |
-| `outcome.json_valid` | binary | higher_is_better | — | The final answer parses as JSON (fenced code blocks stripped). |
+| `outcome.json_valid` | binary | higher_is_better | `output_schema` | The final answer parses as JSON (fenced code blocks stripped). |
 | `outcome.numeric_accuracy` | binary | higher_is_better | `reference_answer` | First number in the answer, within `numeric_tolerance`. |
 | `outcome.schema_compliant` | binary | higher_is_better | `output_schema` | The answer parses as JSON and satisfies the task's schema. |
 | `outcome.semantic_similarity` | continuous | higher_is_better | `embeddings`, `reference_answer` | Cosine similarity vs the reference answer. The embedder in use is named in the report; the default is lexical, not semantic (see docs/limitations.md). |

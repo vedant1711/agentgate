@@ -837,6 +837,26 @@ def harness_record(
     console.print(report.describe())
 
 
+@harness_app.command("export")
+def harness_export(
+    store: Annotated[Path, typer.Option("--store", help="Harness DuckDB file.")] = HARNESS_STORE,
+    target: Annotated[Path, typer.Option("--target", help="Where to write the snapshot.")] = Path(
+        "results/harness.json"
+    ),
+) -> None:
+    """Write a compact, committable snapshot of everything the harness knows.
+
+    The store itself is not committed — it is large and regenerable. This snapshot is, so each
+    recording session leaves a reviewable diff of what the project learned.
+    """
+    from agentgate.harness import write_snapshot
+    from agentgate.storage.duckdb_store import RunStore
+
+    with RunStore(store, read_only=True) as run_store:
+        written = write_snapshot(run_store, target)
+    console.print(f"[green]wrote[/green] {written}")
+
+
 @app.command("leaderboard")
 def leaderboard(
     suite: Annotated[str, typer.Option("--suite", help="Suite name to rank on.")],

@@ -142,19 +142,30 @@ groups:
     cases:
       - name: plain_json
         expected: 1.0
+        task: {reference: {output_schema: {type: object}}}
         trajectory: {answer: '{"status": "ok", "refunded": 45}'}
 
       - name: fenced_json
         expected: 1.0
+        task: {reference: {output_schema: {type: object}}}
         trajectory: {answer: "```json\n{\"status\": \"ok\"}\n```"}
 
       - name: prose
         expected: 0.0
+        task: {reference: {output_schema: {type: object}}}
         trajectory: {answer: "The refund is done."}
 
       - name: empty
         expected: 0.0
+        task: {reference: {output_schema: {type: object}}}
         trajectory: {answer: ""}
+
+      # A task that never asked for JSON must be skipped, not scored 0. Without this the metric
+      # reports a prose suite as a 99% formatting failure — a question the harness invented.
+      - name: task_never_asked_for_json
+        expected: null
+        task: {reference: {answer: "The refund is done."}}
+        trajectory: {answer: "The refund is done."}
 
   - metric: outcome.schema_compliant
     cases:

@@ -95,9 +95,10 @@ CATALOG: Final[tuple[ModelCard, ...]] = (
         local=True,
         approx_s_per_call=2.4,
         notes=(
-            "Measured on an M4: ~2.4s/turn warm (~7s on the first, cold call). Scores 4/8 on "
-            "the smoke suite — it skips the customer lookup and violates the refund-approval "
-            "policy, which is exactly the kind of real weakness the gate exists to measure."
+            "Measured on an M4: ~2.4s/turn warm (~7s cold). On tau2_retail (111 tasks, K=3, "
+            "104 min) it solves 18% of tasks [0.108, 0.252] while scoring 0.99 on judged "
+            "coherence — fluent, efficient, and wrong. That gap is the single most useful "
+            "number the harness has produced."
         ),
     ),
     ModelCard(

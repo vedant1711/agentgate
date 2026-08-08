@@ -1,0 +1,281 @@
+{
+  "snapshot_version": 1,
+  "agentgate_version": "0.1.0.dev0",
+  "ci_level": 0.95,
+  "note": "Every value carries its confidence interval and n. Metrics that did not apply to a suite are omitted rather than scored zero. Cells marked complete:false were only partially recorded and are not comparable to complete ones.",
+  "n_cells": 1,
+  "suites": [
+    "tau2_retail"
+  ],
+  "models": [
+    "ollama_chat/llama3.2:3b"
+  ],
+  "cells": [
+    {
+      "suite": "tau2_retail",
+      "model_id": "ollama_chat/llama3.2:3b",
+      "label": "Llama 3.2 3B",
+      "k": 3,
+      "run_id": "tau2-llama32-3b-baseline",
+      "recorded_at": "2026-08-08T10:35:05.737062+00:00",
+      "agent": "tau2_retail_agent",
+      "n_tasks": 111,
+      "n_samples": 333,
+      "completion_rate": 0.991,
+      "complete": true,
+      "git_sha": "5b11b7e004c5fb2f3a8d58330a40282331a0afa7",
+      "metrics": [
+        {
+          "metric": "efficiency.completion_tokens",
+          "value": 253.85285285285283,
+          "ci_low": 234.53192851526208,
+          "ci_high": 273.1737771904436,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "count"
+        },
+        {
+          "metric": "efficiency.est_cost_usd",
+          "value": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "continuous"
+        },
+        {
+          "metric": "efficiency.latency_ms",
+          "value": 13259.93762299695,
+          "ci_low": 12264.88659043185,
+          "ci_high": 14254.988655562049,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "continuous"
+        },
+        {
+          "metric": "efficiency.llm_roundtrips",
+          "value": 2.027027027027027,
+          "ci_low": 1.9876878662376791,
+          "ci_high": 2.0663661878163753,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "count"
+        },
+        {
+          "metric": "efficiency.prompt_tokens",
+          "value": 1875.009009009009,
+          "ci_low": 1836.9157015573219,
+          "ci_high": 1913.1023164606963,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "count"
+        },
+        {
+          "metric": "efficiency.tool_calls_count",
+          "value": 4.2342342342342345,
+          "ci_low": 3.757658680852533,
+          "ci_high": 4.710809787615936,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "count"
+        },
+        {
+          "metric": "efficiency.total_tokens",
+          "value": 2128.861861861862,
+          "ci_low": 2077.4185072544233,
+          "ci_high": 2180.305216469301,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "count"
+        },
+        {
+          "metric": "judge.coherence",
+          "value": 0.9940239111291742,
+          "ci_low": 0.9879811123569199,
+          "ci_high": 1.0000667099014287,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "continuous"
+        },
+        {
+          "metric": "judge.instruction_following",
+          "value": 0.6194742003472509,
+          "ci_low": 0.5586530777252408,
+          "ci_high": 0.680295322969261,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "continuous"
+        },
+        {
+          "metric": "outcome.abstained",
+          "value": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "n": 111,
+          "method": "clt(task-rates)",
+          "direction": "lower_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "outcome.task_success",
+          "value": 0.18018018018018017,
+          "ci_low": 0.10835702765468462,
+          "ci_high": 0.2520033327056757,
+          "n": 111,
+          "method": "clt(task-rates)",
+          "direction": "higher_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "rag.answer_relevancy",
+          "value": 0.26696720906123667,
+          "ci_low": 0.2434627741670628,
+          "ci_high": 0.29047164395541053,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.any_order_match",
+          "value": 0.22522522522522523,
+          "ci_low": 0.14716172872860284,
+          "ci_high": 0.3032887217218476,
+          "n": 111,
+          "method": "clt(task-rates)",
+          "direction": "higher_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "trajectory.argument_correctness",
+          "value": 0.14464519765753162,
+          "ci_low": 0.11598820012167316,
+          "ci_high": 0.17330219519339007,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.error_recovery_rate",
+          "value": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "n": 105,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.exact_match",
+          "value": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "n": 111,
+          "method": "clt(task-rates)",
+          "direction": "higher_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "trajectory.f1",
+          "value": 0.4581131169366463,
+          "ci_low": 0.4213054596470593,
+          "ci_high": 0.4949207742262333,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.in_order_match",
+          "value": 0.1891891891891892,
+          "ci_low": 0.11599785367715447,
+          "ci_high": 0.2623805247012239,
+          "n": 111,
+          "method": "clt(task-rates)",
+          "direction": "higher_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "trajectory.lcs_ratio",
+          "value": 0.5012780012780013,
+          "ci_low": 0.4453175469335132,
+          "ci_high": 0.5572384556224893,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.loop_detected",
+          "value": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "n": 111,
+          "method": "clt(task-rates)",
+          "direction": "lower_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "trajectory.precision",
+          "value": 0.574075374075374,
+          "ci_low": 0.5172568431291439,
+          "ci_high": 0.6308939050216041,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.recall",
+          "value": 0.5354985854985855,
+          "ci_low": 0.4759768731096049,
+          "ci_high": 0.5950202978875662,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.redundant_call_rate",
+          "value": 0.028072553072553078,
+          "ci_low": 0.011897238602354247,
+          "ci_high": 0.04424786754275191,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.single_tool_use",
+          "value": 0.32432432432432434,
+          "ci_low": 0.23684394616494805,
+          "ci_high": 0.4118047024837006,
+          "n": 111,
+          "method": "clt(task-rates)",
+          "direction": "higher_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "trajectory.step_efficiency",
+          "value": 0.7658505908505908,
+          "ci_low": 0.7110097499065796,
+          "ci_high": 0.820691431794602,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "continuous"
+        }
+      ]
+    }
+  ]
+}
