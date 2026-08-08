@@ -171,7 +171,32 @@ def check_contains(sample: ScoredSample, params: dict[str, Any]) -> CheckerResul
     return not missing, {"missing": missing}
 
 
+def check_trajectory_reference(sample: ScoredSample, params: dict[str, Any]) -> CheckerResult:
+    """Success when the agent made every required tool call, in order.
+
+    Used by suites adopted from published benchmarks whose ground truth is the gold *trajectory*
+    rather than an annotated end state. Extra calls are tolerated; missing ones are not, which
+    matches how the source benchmarks grade.
+    """
+    reference = sample.reference.trajectory
+    if reference is None:
+        return False, {"reason": "task declares no reference trajectory"}
+    from agentgate.metrics.matching import match_trajectory
+
+    match = match_trajectory(reference, sample.trajectory.tool_invocations)
+    strict = bool(params.get("in_order", True))
+    ok = match.in_order_match if strict else match.any_order_match
+    steps = reference.steps
+    return ok, {
+        "required": [step.tools[0] for step in steps],
+        "predicted": sample.trajectory.tool_sequence,
+        "missing": [steps[i].tools[0] for i in match.missing_refs],
+        "recall": match.recall,
+    }
+
+
 CHECKERS: dict[str, CheckerFn] = {
+    "trajectory_reference": check_trajectory_reference,
     "goal_state": check_goal_state,
     "answer_match": check_answer_match,
     "numeric": check_numeric,

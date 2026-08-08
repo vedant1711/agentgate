@@ -6,6 +6,50 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Phase 8 — Real models on a real benchmark
+
+Two of the honest blockers in the Phase 7 write-up are now closed.
+
+**A real model has touched it.** `agentgate models` reports which of eleven catalogued models are
+reachable right now and why the rest are not — Ollama needs a daemon, everyone else needs a key —
+so the harness never fails three minutes into a run over a missing credential. Local Ollama needs
+no account at all, which is what makes the whole project runnable by anyone who clones it.
+
+The measurements are the point, and they are unflattering in a useful way. `llama3.2:3b` scores
+**4/8** on the smoke suite where the deterministic brain scores 8/8: it skips the customer lookup
+and violates the refund-approval policy. Speed varies by an order of magnitude — 2.4s per
+tool-calling turn for `llama3.2:3b` against ~75s for the reasoning model `qwen3:4b` — and a
+70-task suite at K=4 is about 1,120 calls. That is the empirical case for the cache/replay
+architecture: record slowly in the background, gate instantly from cache.
+
+**The test set is no longer too small.** `suites/tau2_retail` adapts the retail domain of
+[τ²-bench](https://github.com/sierra-research/tau2-bench) (MIT): 111 tasks over a 16-tool
+environment with 500 users and 1,000 orders, graded against τ²'s own gold trajectories via a new
+`trajectory_reference` checker. Because τ² tasks are mutually independent, each is its own
+cluster — 111 against `crm_ops`'s 14, roughly eight times the effective sample size.
+
+Three things were done deliberately rather than conveniently:
+
+- **The adaptation is labelled, not hidden.** τ² is multi-turn with a simulated user; AgentGate is
+  single-turn, so each scenario is flattened into one instruction carrying `known_info` while
+  `unknown_info` is withheld. The suite description, the module docstring, and the dataset README
+  all say scores here are not τ²-bench leaderboard scores.
+- **`tau2_retail_agent` has no deterministic brain and refuses `--mode mock`.** A fabricated
+  trajectory over real benchmark tasks would look authoritative and mean nothing.
+- **The sandbox enforces the domain's real policies** — only pending orders are modifiable, and a
+  cancellation reason must be one of τ²'s two allowed strings — so a policy violation is an
+  observable tool error rather than a matter of opinion.
+
+A test comparing the suite's demanded tools against the sandbox's implemented ones caught a real
+gap: three gold trajectories call `get_item_details`, which had not been implemented. Without it
+those tasks were unpassable by construction, and the model would have been blamed for a harness
+defect. It is implemented now.
+
+First real result: `llama3.2:3b` scores **0/4** on the first four τ² tasks, recovering 34% of the
+gold tool calls (F1 0.44, argument correctness 0.16). It skips the `get_product_details`
+verification steps and jumps straight to the exchange. That is a genuine, diagnosable weakness
+measured on published tasks — exactly what the statistics exist to rule on.
+
 ### Phase 7 — Gate engine, reporting, CI, and the demo
 
 The payoff. The gate applies C3's three-way rule — REGRESSION when a one-sided paired test

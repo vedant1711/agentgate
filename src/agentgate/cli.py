@@ -444,12 +444,13 @@ def list_models(
     for card in CATALOG:
         if agents_only and not card.supports_tools:
             continue
-        status = statuses.get(card.provider)
+        card_status = statuses.get(card.provider)
+        reachable = bool(card_status and card_status.reachable)
         table.add_row(
             card.model_id,
             card.provider,
             "[green]yes[/green]" if card.supports_tools else "[red]no[/red]",
-            "[green]yes[/green]" if status and status.reachable else "[yellow]no[/yellow]",
+            "[green]yes[/green]" if reachable else "[yellow]no[/yellow]",
             describe_throughput(card, n_tasks=n_tasks, k=k) if suite is not None else card.notes,
         )
     console.print(table)

@@ -16,6 +16,7 @@ from agentgate.agents.corpus import WikiCorpus
 from agentgate.agents.plan_agent import PlanAgent
 from agentgate.agents.protocol import AgentConfig, BaseAgent
 from agentgate.agents.rag_agent import RagAgent
+from agentgate.agents.tau2_agent import Tau2RetailAgent
 from agentgate.agents.tool_agent import ToolAgent
 from agentgate.errors import ConfigError
 from agentgate.faults.config import FaultConfig
@@ -29,6 +30,7 @@ AGENT_CLASSES: dict[str, type[BaseAgent]] = {
     ToolAgent.name: ToolAgent,
     RagAgent.name: RagAgent,
     PlanAgent.name: PlanAgent,
+    Tau2RetailAgent.name: Tau2RetailAgent,
 }
 """Reference agents by id."""
 
@@ -36,6 +38,8 @@ BRAINS: dict[str, Callable[[ChatRequest], ChatResponse]] = {
     ToolAgent.name: CrmBrain(),
     RagAgent.name: RagBrain(),
     PlanAgent.name: PlanBrain(),
+    # tau2_retail_agent has no brain on purpose: a fabricated trajectory over real benchmark
+    # tasks would look authoritative and mean nothing. It refuses to run in mock mode.
 }
 """The deterministic policy that stands in for a model in offline modes."""
 
@@ -58,7 +62,11 @@ def brain_for(agent: str) -> Handler:
         ConfigError: When ``agent`` is not registered.
     """
     if agent not in BRAINS:
-        msg = f"unknown agent {agent!r}; known agents: {', '.join(agent_names())}"
+        known = ", ".join(sorted(BRAINS))
+        msg = (
+            f"no deterministic brain for {agent!r}; agents with one: {known}. "
+            f"Agents built on published benchmarks require a real model."
+        )
         raise ConfigError(msg)
     return BRAINS[agent]
 
@@ -101,7 +109,7 @@ def build_client(
     )
     transport = (
         MockTransport(brain_for(agent), provider="mock")
-        if model.startswith(MOCK_MODEL_PREFIX)
+        if model.startswith(MOCK_MODEL_PREFIX) and agent in BRAINS
         else None
     )
     return LLMClient(config, transport=transport)
@@ -148,6 +156,10 @@ def build_agent(
         agent, mode=mode, cache_path=cache_path, budget=budget, model=agent_config.model
     )
 
+    if issubclass(agent_cls, Tau2RetailAgent):
+        return agent_cls(
+            client=resolved_client, config=agent_config, faults=faults or FaultConfig()
+        )
     if issubclass(agent_cls, RagAgent | PlanAgent):
         return agent_cls(
             client=resolved_client,

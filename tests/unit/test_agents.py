@@ -29,6 +29,7 @@ from agentgate.agents.prompts import (
     wants_verbosity,
 )
 from agentgate.agents.protocol import AgentConfig, AgentUnderTest
+from agentgate.agents.registry import BRAINS
 from agentgate.errors import ConfigError
 from agentgate.faults import SIGNATURES, FaultConfig, scenario_names
 from agentgate.providers.types import ChatMessage, ChatRequest
@@ -70,8 +71,26 @@ async def run_smoke(faults: FaultConfig | None = None, *, seed: int = 7) -> dict
 # ---------------------------------------------------------------------------
 
 
-def test_the_three_reference_agents_are_registered() -> None:
-    assert agent_names() == ["plan_agent", "rag_agent", "tool_agent"]
+def test_the_registered_agents_are_the_expected_set() -> None:
+    assert agent_names() == ["plan_agent", "rag_agent", "tau2_retail_agent", "tool_agent"]
+
+
+def test_only_the_reference_agents_have_offline_brains() -> None:
+    """The tau2 agent must have no brain, so it can never be faked in mock mode.
+
+    A deterministic stand-in over real benchmark tasks would produce a trajectory that looks
+    authoritative and measures nothing, so the absence of a brain is a guarantee worth asserting.
+    """
+    assert sorted(BRAINS) == ["plan_agent", "rag_agent", "tool_agent"]
+
+
+@pytest.mark.asyncio
+async def test_the_tau2_agent_refuses_to_run_in_mock_mode() -> None:
+    agent = build_agent("tau2_retail_agent", config=AgentConfig(model="mock/agent"))
+    task = TaskSpec(id="t", cluster_id="c", inputs={"prompt": "hello"})
+    trajectory = Trajectory(task_id="t", rep=0, seed=0, system="baseline")
+    with pytest.raises(ConfigError, match="mock mode"):
+        await agent.execute(task, seed=0, trajectory=trajectory)
 
 
 def test_agents_satisfy_the_integration_protocol() -> None:

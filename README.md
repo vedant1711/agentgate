@@ -68,6 +68,33 @@ Under active construction. See [CHANGELOG.md](CHANGELOG.md) for what has landed.
 ```bash
 uv sync
 uv run agentgate --help
+uv run agentgate models          # which models are reachable right now, and why the rest are not
+```
+
+## Suites
+
+| Suite | Tasks | Clusters | Ground truth | Agent |
+|---|---|---|---|---|
+| `suites/smoke` | 8 | 5 | Annotated goal state | `tool_agent` |
+| `suites/crm_ops` | 70 | 14 | Annotated goal state | `tool_agent` |
+| `suites/tau2_retail` | 111 | 111 | τ²-bench gold trajectories | `tau2_retail_agent` |
+
+`tau2_retail` is a **single-turn adaptation** of the retail domain from
+[τ²-bench](https://github.com/sierra-research/tau2-bench) (MIT). The tasks, the 16-tool
+environment, and the gold trajectories are theirs; the interaction protocol is ours, so scores
+here are *not* τ²-bench leaderboard scores. See [datasets/tau2/README.md](datasets/tau2/README.md).
+
+It matters statistically: τ² tasks are mutually independent, so the suite contributes 111
+clusters against `crm_ops`'s 14 — roughly eight times the effective sample size, which is what
+moves the minimum detectable effect into a range where a real regression is actually detectable.
+
+Running it needs a real tool-calling model. `tau2_retail_agent` has no deterministic brain and
+**refuses to run in mock mode** on purpose: a fabricated trajectory over real benchmark tasks
+would look authoritative and measure nothing.
+
+```bash
+ollama pull llama3.2:3b
+uv run agentgate run --suite suites/tau2_retail --model ollama_chat/llama3.2:3b --mode cache
 ```
 
 ## License
