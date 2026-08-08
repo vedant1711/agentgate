@@ -31,6 +31,10 @@ schema_app = typer.Typer(
     name="schema", help="Inspect and export JSON Schemas.", no_args_is_help=True
 )
 app.add_typer(schema_app)
+docs_app = typer.Typer(
+    name="docs", help="Generate documentation from the code.", no_args_is_help=True
+)
+app.add_typer(docs_app)
 
 console = Console()
 
@@ -104,11 +108,14 @@ def run(
         Path | None, typer.Option("--store", help="DuckDB file to persist the run into.")
     ] = None,
     resume: Annotated[bool, typer.Option("--resume/--no-resume")] = True,
+    score: Annotated[
+        bool, typer.Option("--score/--no-score", help="Score the run with the metrics engine.")
+    ] = True,
     run_id: Annotated[
         str | None, typer.Option("--run-id", help="Override the derived run id.")
     ] = None,
 ) -> None:
-    """Execute a suite against one system and record its trajectories."""
+    """Execute a suite against one system, record its trajectories, and score them."""
     import asyncio
 
     from agentgate.faults import FaultConfig
@@ -157,6 +164,22 @@ def run(
     for warning in result.warnings:
         console.print(f"[yellow]warning:[/yellow] {warning}")
 
+    if score:
+        from agentgate.metrics import MetricsEngine
+
+        engine = MetricsEngine()
+        results = engine.score_run(runner.suite, result.trajectories, run_id=result.run_id)
+        usable = [item for item in results if item.is_scored]
+        console.print(
+            f"scored {len(usable)}/{len(results)} metric samples across "
+            f"{len({item.metric for item in usable})} metrics"
+        )
+        if store is not None:
+            from agentgate.storage.duckdb_store import RunStore
+
+            with RunStore(store) as run_store:
+                run_store.save_scores(result.run_id, results)
+
     summary = result.summary
     table = Table(show_header=False, box=None)
     table.add_row("run id", result.run_id)
@@ -196,6 +219,53 @@ def list_suites(
             str(len(warnings)) if warnings else "-",
         )
     console.print(table)
+
+
+@app.command("metrics")
+def list_metrics(
+    family: Annotated[
+        str | None, typer.Option("--family", help="Filter to one metric family.")
+    ] = None,
+) -> None:
+    """List the registered metrics and what each requires."""
+    from agentgate.metrics import engine as _engine  # noqa: F401  populates the registry
+    from agentgate.metrics import registry
+    from agentgate.schemas.common import MetricFamily
+
+    metrics = registry.by_family(MetricFamily(family)) if family else registry.all_metrics()
+    table = Table("metric", "family", "dtype", "direction", "requires")
+    for metric in metrics:
+        table.add_row(
+            metric.name,
+            metric.family.value,
+            metric.dtype,
+            metric.direction,
+            ", ".join(sorted(r.value for r in metric.requires)) or "-",
+        )
+    console.print(table)
+    console.print(f"{len(metrics)} metrics")
+
+
+@docs_app.command("metrics")
+def docs_metrics(
+    target: Annotated[Path, typer.Option("--target", "-t", help="Markdown file to write.")] = Path(
+        "docs/metrics.md"
+    ),
+    check: Annotated[
+        bool, typer.Option("--check", help="Fail when the committed catalogue is stale.")
+    ] = False,
+) -> None:
+    """Generate the metric catalogue from the registry."""
+    from agentgate.metrics import engine as _engine  # noqa: F401  populates the registry
+    from agentgate.metrics.docgen import metrics_doc_is_current, write_metrics_doc
+
+    if check:
+        if metrics_doc_is_current(target):
+            console.print(f"[green]ok[/green] {target} is up to date")
+            return
+        console.print(f"[red]stale[/red] {target}; run `agentgate docs metrics`")
+        raise typer.Exit(code=1)
+    console.print(f"[green]wrote[/green] {write_metrics_doc(target)}")
 
 
 @app.command("corpus")

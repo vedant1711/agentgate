@@ -1,0 +1,184 @@
+# Golden values for the partial-credit trajectory metrics (B2).
+groups:
+  - metric: trajectory.precision
+    cases:
+      - name: no_extras
+        note: 2 matched of 2 predicted
+        expected: 1.0
+        task:
+          reference:
+            trajectory: {steps: [{tool: lookup_customer}, {tool: refund_order}]}
+        trajectory: {tools: [lookup_customer, refund_order]}
+
+      - name: half_the_calls_are_noise
+        note: 2 matched of 4 predicted
+        expected: 0.5
+        task:
+          reference:
+            trajectory: {steps: [{tool: lookup_customer}, {tool: refund_order}]}
+        trajectory: {tools: [lookup_customer, search_kb, refund_order, calculator]}
+
+      - name: nothing_predicted
+        note: 0/0 -> 0.0, since no correct calls were made
+        expected: 0.0
+        task:
+          reference:
+            trajectory: {steps: [{tool: lookup_customer}]}
+        trajectory: {tools: []}
+
+  - metric: trajectory.recall
+    cases:
+      - name: all_required_recovered
+        expected: 1.0
+        task:
+          reference:
+            trajectory: {steps: [{tool: lookup_customer}, {tool: refund_order}]}
+        trajectory: {tools: [refund_order, lookup_customer, search_kb]}
+
+      - name: one_of_three
+        expected: 0.3333333333333333
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}, {tool: get_order}, {tool: refund_order}]
+        trajectory: {tools: [lookup_customer]}
+
+      - name: optional_steps_excluded_from_the_denominator
+        note: 1 required step, recovered -> 1.0 even though the optional step is missing
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              steps:
+                - {tool: lookup_customer}
+                - {tool: search_kb, optional: true}
+        trajectory: {tools: [lookup_customer]}
+
+      - name: no_required_steps
+        note: vacuous recall is 1.0, not 0.0
+        expected: 1.0
+        task:
+          reference:
+            trajectory: {steps: [{tool: search_kb, optional: true}]}
+        trajectory: {tools: []}
+
+  - metric: trajectory.lcs_ratio
+    cases:
+      - name: exact_order
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}, {tool: get_order}, {tool: refund_order}]
+        trajectory: {tools: [lookup_customer, get_order, refund_order]}
+
+      - name: reordered_costs_partial_credit
+        note: LCS(a,b,c ; c,a,b) = 2 -> 2/3
+        expected: 0.6666666666666666
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}, {tool: get_order}, {tool: refund_order}]
+        trajectory: {tools: [refund_order, lookup_customer, get_order]}
+
+      - name: interleaved_extras_keep_full_credit
+        note: LCS is a subsequence, so noise between correct calls costs nothing here
+        expected: 1.0
+        task:
+          reference:
+            trajectory: {steps: [{tool: lookup_customer}, {tool: refund_order}]}
+        trajectory: {tools: [lookup_customer, search_kb, calculator, refund_order]}
+
+      - name: nothing_in_common
+        expected: 0.0
+        task:
+          reference:
+            trajectory: {steps: [{tool: lookup_customer}, {tool: refund_order}]}
+        trajectory: {tools: [search_kb, calculator]}
+
+  - metric: trajectory.argument_correctness
+    cases:
+      - name: all_arguments_right
+        note: 3 expected pairs, 3 correct
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              steps:
+                - {tool: lookup_customer, args: {customer_id: 7}}
+                - {tool: refund_order, args: {order_id: 42, amount: 100.0}}
+        trajectory:
+          calls:
+            - {tool: lookup_customer, args: {customer_id: 7}}
+            - {tool: refund_order, args: {order_id: 42, amount: 100.0}}
+
+      - name: one_wrong_value
+        note: 3 expected, 2 correct
+        expected: 0.6666666666666666
+        task:
+          reference:
+            trajectory:
+              steps:
+                - {tool: lookup_customer, args: {customer_id: 7}}
+                - {tool: refund_order, args: {order_id: 42, amount: 100.0}}
+        trajectory:
+          calls:
+            - {tool: lookup_customer, args: {customer_id: 7}}
+            - {tool: refund_order, args: {order_id: 42, amount: 250.0}}
+
+      - name: numeric_tolerance_accepts_near_values
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              steps:
+                - tool: refund_order
+                  args: {amount: 100.0}
+                  arg_comparators: {amount: {kind: numeric, tolerance: 0.5}}
+        trajectory:
+          calls: [{tool: refund_order, args: {amount: 100.4}}]
+
+      - name: regex_comparator
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              steps:
+                - tool: send_email
+                  args: {to: "anything@example.com"}
+                  arg_comparators: {to: {kind: regex, pattern: "@example\\.com$"}}
+        trajectory:
+          calls: [{tool: send_email, args: {to: "ada@example.com"}}]
+
+      - name: ignored_field_is_not_counted
+        note: only order_id is checked; body is ignored -> 1/1
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              steps:
+                - tool: refund_order
+                  args: {order_id: 42, reason: "anything"}
+                  arg_comparators: {reason: {kind: ignore}}
+        trajectory:
+          calls: [{tool: refund_order, args: {order_id: 42, reason: "totally different"}}]
+
+      - name: missing_call_makes_its_arguments_wrong
+        note: the refund never happened, so both of its expected pairs are wrong -> 1/3
+        expected: 0.3333333333333333
+        task:
+          reference:
+            trajectory:
+              steps:
+                - {tool: lookup_customer, args: {customer_id: 7}}
+                - {tool: refund_order, args: {order_id: 42, amount: 100.0}}
+        trajectory:
+          calls: [{tool: lookup_customer, args: {customer_id: 7}}]
+
+      - name: no_expected_arguments
+        note: nothing to check -> skipped, not 1.0
+        expected: null
+        task:
+          reference:
+            trajectory: {steps: [{tool: lookup_customer}]}
+        trajectory: {tools: [lookup_customer]}

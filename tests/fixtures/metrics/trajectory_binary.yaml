@@ -1,0 +1,136 @@
+# Golden values for the three binary trajectory match metrics (B2).
+#
+# The implication chain exact => in_order => any_order is asserted separately as a property
+# (H2); these cases pin the exact boundaries by hand.
+groups:
+  - metric: trajectory.exact_match
+    cases:
+      - name: identical_sequence
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}, {tool: get_order}, {tool: refund_order}]
+        trajectory: {tools: [lookup_customer, get_order, refund_order]}
+
+      - name: extra_call_breaks_exact
+        note: in_order would still pass; exact forbids extras
+        expected: 0.0
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}, {tool: refund_order}]
+        trajectory: {tools: [lookup_customer, search_kb, refund_order]}
+
+      - name: wrong_order_breaks_exact
+        expected: 0.0
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}, {tool: refund_order}]
+        trajectory: {tools: [refund_order, lookup_customer]}
+
+      - name: optional_step_absent_still_exact
+        note: an omitted optional step never counts against the match
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              steps:
+                - {tool: lookup_customer}
+                - {tool: search_kb, optional: true}
+                - {tool: refund_order}
+        trajectory: {tools: [lookup_customer, refund_order]}
+
+      - name: empty_prediction
+        expected: 0.0
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}]
+        trajectory: {tools: []}
+
+  - metric: trajectory.in_order_match
+    cases:
+      - name: subsequence_with_extras
+        note: reference appears in order; extras are allowed by default
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}, {tool: refund_order}]
+        trajectory: {tools: [search_kb, lookup_customer, calculator, refund_order, send_email]}
+
+      - name: reversed_order_fails
+        expected: 0.0
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}, {tool: refund_order}]
+        trajectory: {tools: [refund_order, lookup_customer]}
+
+      - name: unordered_group_may_be_satisfied_in_any_order
+        note: the two grouped steps carry the same group id
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              steps:
+                - {tool: lookup_customer}
+                - {tool: get_order, group: gather}
+                - {tool: search_kb, group: gather}
+                - {tool: refund_order}
+        trajectory: {tools: [lookup_customer, search_kb, get_order, refund_order]}
+
+      - name: extras_forbidden_when_declared
+        expected: 0.0
+        task:
+          reference:
+            trajectory:
+              allow_extra_calls: false
+              steps: [{tool: lookup_customer}, {tool: refund_order}]
+        trajectory: {tools: [lookup_customer, search_kb, refund_order]}
+
+      - name: missing_required_call
+        expected: 0.0
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}, {tool: refund_order}]
+        trajectory: {tools: [lookup_customer]}
+
+  - metric: trajectory.any_order_match
+    cases:
+      - name: all_present_any_order
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}, {tool: get_order}, {tool: refund_order}]
+        trajectory: {tools: [refund_order, get_order, lookup_customer]}
+
+      - name: one_missing
+        expected: 0.0
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}, {tool: refund_order}]
+        trajectory: {tools: [refund_order, search_kb]}
+
+      - name: duplicate_does_not_cover_two_distinct_steps
+        note: each predicted call may satisfy at most one reference step
+        expected: 0.0
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}, {tool: refund_order}]
+        trajectory: {tools: [refund_order, refund_order]}
+
+      - name: empty_prediction_with_only_optional_steps
+        note: no required steps -> vacuously matched
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: search_kb, optional: true}]
+        trajectory: {tools: []}

@@ -1,0 +1,198 @@
+# Golden values for the RAG family (B3) and the rubric-judge criteria (B1).
+#
+# Judge-backed cases run against the deterministic LexicalJudge, so their expectations are
+# hand-computable. Part D's real judges are validated separately against human labels.
+groups:
+  - metric: rag.faithfulness
+    cases:
+      - name: every_claim_grounded
+        expected: 1.0
+        trajectory:
+          answer: "The service level target is 95 percent. The turnaround time is 3 business days."
+          retrieved_contexts:
+            - "The service level target is 95 percent."
+            - "The turnaround time is 3 business days."
+
+      - name: half_the_claims_grounded
+        expected: 0.5
+        trajectory:
+          answer: "The service level target is 95 percent. The team has fourteen open incidents."
+          retrieved_contexts:
+            - "The service level target is 95 percent."
+
+      - name: nothing_grounded
+        expected: 0.0
+        trajectory:
+          answer: "The budget was tripled last quarter. Headcount doubled in the same period."
+          retrieved_contexts:
+            - "The service level target is 95 percent."
+
+      - name: no_contexts_retrieved
+        expected: null
+        trajectory:
+          answer: "The service level target is 95 percent."
+
+  - metric: rag.hallucination_rate
+    cases:
+      - name: complement_of_perfect_faithfulness
+        expected: 0.0
+        trajectory:
+          answer: "The service level target is 95 percent."
+          retrieved_contexts: ["The service level target is 95 percent."]
+
+      - name: complement_of_half
+        expected: 0.5
+        trajectory:
+          answer: "The service level target is 95 percent. The team has fourteen open incidents."
+          retrieved_contexts: ["The service level target is 95 percent."]
+
+      - name: everything_hallucinated
+        expected: 1.0
+        trajectory:
+          answer: "The budget was tripled last quarter. Headcount doubled in the same period."
+          retrieved_contexts: ["The service level target is 95 percent."]
+
+  - metric: rag.answer_relevancy
+    cases:
+      - name: answer_restates_the_question
+        expected: 1.0
+        task: {prompt: "What is the service level target?"}
+        trajectory: {answer: "What is the service level target?"}
+
+      - name: abstention_scores_zero
+        note: refusing may be correct, but it is never relevant
+        expected: 0.0
+        task: {prompt: "What is the service level target?"}
+        trajectory: {answer: "I don't know based on the available documentation."}
+
+      - name: unrelated_answer
+        expected: 0.0
+        task: {prompt: "alpha beta gamma"}
+        trajectory: {answer: "delta epsilon zeta"}
+
+  - metric: rag.context_precision
+    cases:
+      - name: every_chunk_is_gold
+        expected: 1.0
+        task:
+          reference:
+            contexts: ["The service level target is 95 percent."]
+        trajectory:
+          retrieved_contexts: ["The service level target is 95 percent."]
+
+      - name: half_the_chunks_are_noise
+        expected: 0.5
+        task:
+          reference:
+            contexts: ["The service level target is 95 percent."]
+        trajectory:
+          retrieved_contexts:
+            - "The service level target is 95 percent."
+            - "Completely unrelated paragraph about cafeteria opening hours."
+
+      - name: nothing_relevant_retrieved
+        expected: 0.0
+        task:
+          reference:
+            contexts: ["The service level target is 95 percent."]
+        trajectory:
+          retrieved_contexts: ["Completely unrelated paragraph about cafeteria hours."]
+
+      - name: no_gold_contexts_declared
+        expected: null
+        trajectory:
+          retrieved_contexts: ["anything at all"]
+
+  - metric: rag.context_recall
+    cases:
+      - name: reference_answer_fully_covered
+        expected: 1.0
+        task:
+          reference:
+            answer: "The service level target is 95 percent."
+        trajectory:
+          retrieved_contexts: ["The service level target is 95 percent for provisioning."]
+
+      - name: reference_answer_not_covered
+        expected: 0.0
+        task:
+          reference:
+            answer: "The escalation ladder has four tiers."
+        trajectory:
+          retrieved_contexts: ["The service level target is 95 percent."]
+
+      - name: no_contexts_retrieved
+        expected: null
+        task:
+          reference:
+            answer: "The service level target is 95 percent."
+        trajectory: {tools: []}
+
+  - metric: judge.correctness
+    cases:
+      - name: answer_matches_the_reference
+        expected: 1.0
+        task: {reference: {answer: "The service level target is 95 percent."}}
+        trajectory: {answer: "The service level target is 95 percent."}
+
+      - name: answer_shares_nothing_with_the_reference
+        expected: 0.0
+        task: {reference: {answer: "alpha beta gamma delta"}}
+        trajectory: {answer: "epsilon zeta eta theta"}
+
+      - name: no_reference_answer
+        expected: null
+        task: {reference: {}}
+        trajectory: {answer: "anything"}
+
+  - metric: judge.completeness
+    cases:
+      - name: covers_the_whole_reference
+        expected: 1.0
+        task: {reference: {answer: "target is 95 percent"}}
+        trajectory: {answer: "The target is 95 percent, measured monthly."}
+
+      - name: covers_none_of_it
+        expected: 0.0
+        task: {reference: {answer: "alpha beta gamma"}}
+        trajectory: {answer: "delta epsilon zeta"}
+
+      - name: no_reference_answer
+        expected: null
+        task: {reference: {}}
+        trajectory: {answer: "anything"}
+
+  - metric: judge.instruction_following
+    cases:
+      - name: answer_addresses_the_instruction
+        expected: 1.0
+        task: {prompt: "Summarise the refund policy."}
+        trajectory: {answer: "Summarise the refund policy: refunds run for 30 days."}
+
+      - name: answer_ignores_the_instruction
+        expected: 0.0
+        task: {prompt: "alpha beta gamma"}
+        trajectory: {answer: "delta epsilon zeta"}
+
+      - name: partial_address
+        note: overlap 1/2 of content words ("policy"), doubled and capped -> 1.0
+        expected: 1.0
+        task: {prompt: "Summarise the policy."}
+        trajectory: {answer: "The policy is unchanged."}
+
+  - metric: judge.coherence
+    cases:
+      - name: distinct_sentences
+        expected: 1.0
+        trajectory:
+          answer: "The refund was processed. The customer was notified by email."
+
+      - name: fully_repetitive
+        note: 3 sentences, 1 distinct -> 1/3
+        expected: 0.3333333333333333
+        trajectory:
+          answer: "The refund was processed. The refund was processed. The refund was processed."
+
+      - name: single_sentence_is_vacuously_coherent
+        expected: 1.0
+        trajectory: {answer: "The refund was processed."}

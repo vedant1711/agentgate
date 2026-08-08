@@ -56,7 +56,7 @@ Under active construction. See [CHANGELOG.md](CHANGELOG.md) for what has landed.
 | 1 | Provider layer (live/cache/replay/mock) | ✅ |
 | 2 | Reference agents, sandbox, fault knobs | ✅ |
 | 3 | Runner | ✅ |
-| 4 | Metrics engine | ⏳ |
+| 4 | Metrics engine | ✅ |
 | 5 | Judge subsystem | ⏳ |
 | 6 | Statistics engine | ⏳ |
 | 7 | Gate, CI, reporting, demo | ⏳ |

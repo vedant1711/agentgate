@@ -18,7 +18,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_TOKEN_RE = re.compile(r"\w+", re.UNICODE)  # Unicode-aware: "café" must stay one token
 _STOPWORDS = frozenset(
     [
         "a",

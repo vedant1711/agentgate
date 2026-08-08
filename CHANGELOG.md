@@ -6,6 +6,37 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Phase 4 — Metrics engine
+
+All 42 Part B metrics implemented as plugins behind one protocol: outcome, trajectory, RAG,
+safety, and efficiency. The statistics engine never needs to know which is which — it reads
+`dtype` and applies the machinery Part C says is legal for that measurement type.
+
+The rule that shapes everything else: a metric whose requirements a task does not satisfy is
+**skipped**, never scored zero. Scoring a missing reference as 0 would drag the suite mean down
+and make a task-authoring gap look like an agent regression. Several metrics skip for subtler
+reasons — `trajectory.error_recovery_rate` on a run with no errors is undefined, not perfect,
+and scoring it 1.0 would make the suite mean move whenever the error *rate* changed.
+
+The reference-trajectory matcher supports allowed-alternative tools, optional steps, and
+unordered groups, and computes two alignments because the metrics need different things: an
+ordered one for `exact_match`/`in_order_match`, and an unordered one for `any_order_match`,
+precision/recall/F1, and argument correctness. `lcs_ratio` is the one metric awarding partial
+order credit.
+
+Judge-backed metrics run against a `Judge` protocol with a deterministic `LexicalJudge` default,
+so faithfulness and grounded reasoning score offline for free — clearly named so a lexical
+number is never mistaken for a rubric-judged one. The real bias-controlled judges arrive in
+Phase 5. Similarity uses a local hashing embedder that is honest about being lexical rather than
+semantic; the optional `embeddings` extra swaps in MiniLM.
+
+Coverage: 126 hand-computed golden cases in committed YAML (every metric, ≥3 cases each,
+including degenerate inputs), plus hypothesis property tests for bounds, the
+`exact ⇒ in_order ⇒ any_order` implication chain, permutation invariance, and precision/recall/F1
+consistency. Hypothesis found a real tokenizer bug along the way: the ASCII-only pattern was
+silently mangling ordinary words ("café" → "caf"), now fixed to be Unicode-aware.
+`docs/metrics.md` is generated from the registry and checked in CI.
+
 ### Phase 3 — Runner
 
 Added the layer that turns "run this agent" into `N tasks × K repetitions` of reproducible

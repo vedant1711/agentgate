@@ -1,0 +1,76 @@
+# Golden values for the trajectory alignment metrics.
+#
+# The reference is: lookup_customer -> get_order -> (refund_order | refund) unless a case says
+# otherwise. Every `expected` below is computed by hand from the definitions in Part B2.
+metric: trajectory.f1
+cases:
+  - name: perfect
+    note: 3 matched of 3 predicted, 3 of 3 required -> P=1, R=1, F1=1
+    expected: 1.0
+    task:
+      reference:
+        trajectory:
+          steps:
+            - {tool: lookup_customer}
+            - {tool: get_order}
+            - {tools: [refund_order, refund]}
+    trajectory:
+      tools: [lookup_customer, get_order, refund_order]
+
+  - name: alternative_tool_counts
+    note: the reference declares refund_order and refund equivalent
+    expected: 1.0
+    task:
+      reference:
+        trajectory:
+          steps:
+            - {tool: lookup_customer}
+            - {tool: get_order}
+            - {tools: [refund_order, refund]}
+    trajectory:
+      tools: [lookup_customer, get_order, refund]
+
+  - name: one_missing_one_extra
+    note: matched=2; P=2/3, R=2/3 -> F1=2/3
+    expected: 0.6666666666666666
+    task:
+      reference:
+        trajectory:
+          steps:
+            - {tool: lookup_customer}
+            - {tool: get_order}
+            - {tool: refund_order}
+    trajectory:
+      tools: [lookup_customer, get_order, send_email]
+
+  - name: extra_calls_only
+    note: matched=3 of 5 predicted -> P=0.6, R=1.0 -> F1=2*.6*1/1.6=0.75
+    expected: 0.75
+    task:
+      reference:
+        trajectory:
+          steps:
+            - {tool: lookup_customer}
+            - {tool: get_order}
+            - {tool: refund_order}
+    trajectory:
+      tools: [lookup_customer, search_kb, get_order, search_kb, refund_order]
+
+  - name: empty_trajectory
+    note: degenerate — nothing predicted; P=0 (0/0 -> 0), R=0 -> F1=0
+    expected: 0.0
+    task:
+      reference:
+        trajectory:
+          steps:
+            - {tool: lookup_customer}
+    trajectory:
+      tools: []
+
+  - name: no_reference_trajectory
+    note: requirement unmet -> skipped, not zero
+    expected: null
+    task:
+      reference: {}
+    trajectory:
+      tools: [lookup_customer]

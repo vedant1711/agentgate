@@ -1,0 +1,235 @@
+# Golden values for the outcome family (B1).
+groups:
+  - metric: outcome.task_success
+    cases:
+      - name: goal_state_reached
+        expected: 1.0
+        task:
+          checker: {name: goal_state}
+          reference:
+            goal_state:
+              orders: {"1014": {status: refunded, refunded: 45.0}}
+        trajectory:
+          answer: "Refunded order 1014 for $45.00."
+          final_state:
+            orders: {"1014": {status: refunded, refunded: 45.0}}
+            tickets: []
+            emails: []
+
+      - name: fluent_answer_that_changed_nothing_fails
+        note: the whole point of end-state checking (E2)
+        expected: 0.0
+        task:
+          checker: {name: goal_state}
+          reference:
+            goal_state:
+              orders: {"1014": {status: refunded, refunded: 45.0}}
+        trajectory:
+          answer: "I have processed the refund for order 1014 as requested."
+          final_state: {orders: {}, tickets: [], emails: []}
+
+      - name: crashed_run_fails_regardless_of_state
+        expected: 0.0
+        task:
+          checker: {name: goal_state}
+          reference:
+            goal_state:
+              orders: {"1014": {status: refunded}}
+        trajectory:
+          status: error
+          answer: ""
+          final_state: {orders: {"1014": {status: refunded}}}
+
+      - name: answer_match_checker
+        expected: 1.0
+        task:
+          checker: {name: answer_match}
+          reference: {answer: "The customer has 2 orders on file."}
+        trajectory: {answer: "the customer has 2 orders on file"}
+
+      - name: numeric_checker_within_tolerance
+        expected: 1.0
+        task:
+          checker: {name: numeric, params: {tolerance: 0.5}}
+          reference: {numeric_answer: 42.0}
+        trajectory: {answer: "The total comes to 42.3 units."}
+
+      - name: abstention_checker_on_an_unanswerable_task
+        expected: 1.0
+        task:
+          checker: {name: abstention}
+          reference: {unanswerable: true}
+        trajectory: {answer: "I don't know based on the available documentation."}
+
+      - name: no_checker_declared
+        expected: null
+        task:
+          reference: {answer: "anything"}
+        trajectory: {answer: "anything"}
+
+  - metric: outcome.exact_match
+    cases:
+      - name: normalised_equality
+        note: case, punctuation, and articles are normalised away
+        expected: 1.0
+        task: {reference: {answer: "The Refund Was Processed."}}
+        trajectory: {answer: "refund was processed"}
+
+      - name: accepted_alternative
+        expected: 1.0
+        task:
+          reference:
+            answer: "42 days"
+            accepted_answers: ["forty-two days"]
+        trajectory: {answer: "forty-two days"}
+
+      - name: different_answer
+        expected: 0.0
+        task: {reference: {answer: "42 days"}}
+        trajectory: {answer: "43 days"}
+
+      - name: no_reference_answer
+        expected: null
+        task: {reference: {}}
+        trajectory: {answer: "anything"}
+
+  - metric: outcome.f1_token
+    cases:
+      - name: identical_tokens
+        expected: 1.0
+        task: {reference: {answer: "refund processed for order 42"}}
+        trajectory: {answer: "refund processed for order 42"}
+
+      - name: half_overlap
+        note: pred=[refund, processed], ref=[refund, denied]; shared=1 -> P=.5 R=.5 F1=.5
+        expected: 0.5
+        task: {reference: {answer: "refund denied"}}
+        trajectory: {answer: "refund processed"}
+
+      - name: no_overlap
+        expected: 0.0
+        task: {reference: {answer: "refund denied"}}
+        trajectory: {answer: "shipping delayed"}
+
+      - name: empty_answer
+        expected: 0.0
+        task: {reference: {answer: "refund denied"}}
+        trajectory: {answer: ""}
+
+  - metric: outcome.numeric_accuracy
+    cases:
+      - name: within_tolerance
+        expected: 1.0
+        task: {reference: {numeric_answer: 100.0, numeric_tolerance: 1.0}}
+        trajectory: {answer: "The amount is 100.5 dollars."}
+
+      - name: outside_tolerance
+        expected: 0.0
+        task: {reference: {numeric_answer: 100.0, numeric_tolerance: 0.1}}
+        trajectory: {answer: "The amount is 105 dollars."}
+
+      - name: no_number_in_the_answer
+        expected: 0.0
+        task: {reference: {numeric_answer: 100.0}}
+        trajectory: {answer: "It is roughly a hundred."}
+
+      - name: task_declares_no_numeric_answer
+        expected: null
+        task: {reference: {answer: "some text"}}
+        trajectory: {answer: "42"}
+
+  - metric: outcome.json_valid
+    cases:
+      - name: plain_json
+        expected: 1.0
+        trajectory: {answer: '{"status": "ok", "refunded": 45}'}
+
+      - name: fenced_json
+        expected: 1.0
+        trajectory: {answer: "```json\n{\"status\": \"ok\"}\n```"}
+
+      - name: prose
+        expected: 0.0
+        trajectory: {answer: "The refund is done."}
+
+      - name: empty
+        expected: 0.0
+        trajectory: {answer: ""}
+
+  - metric: outcome.schema_compliant
+    cases:
+      - name: conforms
+        expected: 1.0
+        task:
+          reference:
+            output_schema:
+              type: object
+              required: [status, amount]
+              properties:
+                status: {type: string, enum: [ok, failed]}
+                amount: {type: number, minimum: 0}
+        trajectory: {answer: '{"status": "ok", "amount": 45.0}'}
+
+      - name: missing_required_property
+        expected: 0.0
+        task:
+          reference:
+            output_schema:
+              type: object
+              required: [status, amount]
+              properties: {status: {type: string}}
+        trajectory: {answer: '{"status": "ok"}'}
+
+      - name: wrong_type
+        expected: 0.0
+        task:
+          reference:
+            output_schema:
+              type: object
+              properties: {amount: {type: number}}
+        trajectory: {answer: '{"amount": "forty five"}'}
+
+      - name: not_json_at_all
+        expected: 0.0
+        task:
+          reference:
+            output_schema: {type: object}
+        trajectory: {answer: "The refund is done."}
+
+      - name: no_schema_declared
+        expected: null
+        task: {reference: {}}
+        trajectory: {answer: '{"a": 1}'}
+
+  - metric: outcome.abstained
+    cases:
+      - name: declined
+        expected: 1.0
+        trajectory: {answer: "I don't know based on the available documentation."}
+
+      - name: answered
+        expected: 0.0
+        trajectory: {answer: "The service level target is 95%."}
+
+      - name: empty_answer_is_not_an_abstention
+        note: silence is a failure, not a considered refusal
+        expected: 0.0
+        trajectory: {answer: ""}
+
+  - metric: outcome.semantic_similarity
+    cases:
+      - name: identical_text_scores_one
+        expected: 1.0
+        task: {reference: {answer: "Refunded order 1014 for $45.00."}}
+        trajectory: {answer: "Refunded order 1014 for $45.00."}
+
+      - name: unrelated_text_scores_zero
+        note: no shared content words under the default lexical embedder
+        expected: 0.0
+        task: {reference: {answer: "alpha beta gamma"}}
+        trajectory: {answer: "delta epsilon zeta"}
+
+      - name: no_reference_answer
+        expected: null
+        task: {reference: {}}
+        trajectory: {answer: "anything"}

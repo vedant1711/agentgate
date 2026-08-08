@@ -15,7 +15,7 @@ from typing import Any, Self
 
 import duckdb
 
-from agentgate.schemas.results import RunManifest
+from agentgate.schemas.results import MetricResult, RunManifest
 from agentgate.schemas.trajectory import Trajectory
 
 STORE_SCHEMA_VERSION = 1
@@ -59,6 +59,22 @@ CREATE TABLE IF NOT EXISTS samples (
     trajectory_json   VARCHAR NOT NULL,
     PRIMARY KEY (run_id, task_id, rep)
 );
+
+CREATE TABLE IF NOT EXISTS scores (
+    run_id      VARCHAR NOT NULL,
+    task_id     VARCHAR NOT NULL,
+    rep         INTEGER NOT NULL,
+    metric      VARCHAR NOT NULL,
+    value       DOUBLE,
+    family      VARCHAR NOT NULL,
+    dtype       VARCHAR NOT NULL,
+    direction   VARCHAR NOT NULL,
+    status      VARCHAR NOT NULL,
+    cost_tokens INTEGER NOT NULL DEFAULT 0,
+    result_json VARCHAR NOT NULL,
+    PRIMARY KEY (run_id, task_id, rep, metric)
+);
+CREATE INDEX IF NOT EXISTS idx_scores_metric ON scores(run_id, metric);
 """
 
 
@@ -144,7 +160,8 @@ class RunStore:
         return None if row is None else str(row[0])
 
     def delete_run(self, run_id: str) -> None:
-        """Remove a run and its samples."""
+        """Remove a run with its samples and scores."""
+        self._conn.execute("DELETE FROM scores WHERE run_id = ?", [run_id])
         self._conn.execute("DELETE FROM samples WHERE run_id = ?", [run_id])
         self._conn.execute("DELETE FROM runs WHERE run_id = ?", [run_id])
 
@@ -190,6 +207,72 @@ class RunStore:
                 "INSERT INTO samples VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", row
             )
         return len(rows)
+
+    # -- scores ------------------------------------------------------------
+
+    def save_scores(self, run_id: str, results: Iterable[MetricResult]) -> int:
+        """Persist per-sample metric results.
+
+        Per-sample rows, never aggregates: an aggregate cannot be re-analysed at a different K,
+        margin, or alpha, and that re-analysis is what the gate and the demo both do.
+
+        Args:
+            run_id: Owning run.
+            results: Metric results to store; existing rows for the same key are replaced.
+
+        Returns:
+            Number of rows written.
+        """
+        rows = [
+            [
+                run_id,
+                result.task_id,
+                result.rep,
+                result.metric,
+                result.value,
+                result.family.value,
+                result.dtype,
+                result.direction,
+                result.status,
+                result.cost_tokens,
+                result.model_dump_json(),
+            ]
+            for result in results
+        ]
+        for row in rows:
+            self._conn.execute(
+                "DELETE FROM scores WHERE run_id = ? AND task_id = ? AND rep = ? AND metric = ?",
+                [row[0], row[1], row[2], row[3]],
+            )
+            self._conn.execute("INSERT INTO scores VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", row)
+        return len(rows)
+
+    def load_scores(self, run_id: str, *, metric: str | None = None) -> list[MetricResult]:
+        """Return stored metric results for a run, optionally filtered to one metric."""
+        sql = "SELECT result_json FROM scores WHERE run_id = ?"
+        params: list[Any] = [run_id]
+        if metric is not None:
+            sql += " AND metric = ?"
+            params.append(metric)
+        sql += " ORDER BY metric, task_id, rep"
+        rows = self._conn.execute(sql, params).fetchall()
+        return [MetricResult.model_validate_json(row[0]) for row in rows]
+
+    def scored_metric_names(self, run_id: str) -> list[str]:
+        """Metric names with at least one usable value in this run."""
+        rows = self._conn.execute(
+            "SELECT DISTINCT metric FROM scores WHERE run_id = ? AND status = 'ok' "
+            "AND value IS NOT NULL ORDER BY metric",
+            [run_id],
+        ).fetchall()
+        return [str(row[0]) for row in rows]
+
+    def score_count(self, run_id: str) -> int:
+        """Number of stored metric results for a run."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM scores WHERE run_id = ?", [run_id]
+        ).fetchone()
+        return 0 if row is None else int(row[0])
 
     def load_trajectories(self, run_id: str) -> list[Trajectory]:
         """Return every trajectory for ``run_id`` in (task, rep) order."""

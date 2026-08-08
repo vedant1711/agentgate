@@ -1,0 +1,186 @@
+# Golden values for the behavioural trajectory metrics (B2).
+groups:
+  - metric: trajectory.single_tool_use
+    cases:
+      - name: required_tools_all_used
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              required_tools: [refund_order, create_ticket]
+              steps: [{tool: refund_order}]
+        trajectory: {tools: [create_ticket, refund_order]}
+
+      - name: one_required_tool_missing
+        expected: 0.0
+        task:
+          reference:
+            trajectory:
+              required_tools: [refund_order, create_ticket]
+              steps: [{tool: refund_order}]
+        trajectory: {tools: [refund_order]}
+
+      - name: no_required_tools_declared
+        expected: null
+        task:
+          reference:
+            trajectory: {steps: [{tool: refund_order}]}
+        trajectory: {tools: [refund_order]}
+
+  - metric: trajectory.step_efficiency
+    cases:
+      - name: exactly_as_many_steps_as_needed
+        expected: 1.0
+        task:
+          reference:
+            trajectory: {steps: [{tool: lookup_customer}, {tool: refund_order}]}
+        trajectory: {tools: [lookup_customer, refund_order]}
+
+      - name: twice_as_many_steps
+        note: 2 reference / 4 predicted
+        expected: 0.5
+        task:
+          reference:
+            trajectory: {steps: [{tool: lookup_customer}, {tool: refund_order}]}
+        trajectory: {tools: [lookup_customer, search_kb, search_kb, refund_order]}
+
+      - name: fewer_steps_is_capped_at_one
+        note: skipping work is a recall failure, not an efficiency win
+        expected: 1.0
+        task:
+          reference:
+            trajectory:
+              steps: [{tool: lookup_customer}, {tool: get_order}, {tool: refund_order}]
+        trajectory: {tools: [refund_order]}
+
+      - name: no_steps_at_all
+        expected: 0.0
+        task:
+          reference:
+            trajectory: {steps: [{tool: lookup_customer}]}
+        trajectory: {tools: []}
+
+  - metric: trajectory.redundant_call_rate
+    cases:
+      - name: no_repeats
+        expected: 0.0
+        trajectory: {tools: [lookup_customer, get_order, refund_order]}
+
+      - name: one_repeat_in_four
+        note: 4 calls, 3 distinct signatures -> 1/4
+        expected: 0.25
+        trajectory:
+          calls:
+            - {tool: search_kb, args: {query: refunds}}
+            - {tool: lookup_customer, args: {customer_id: 1}}
+            - {tool: search_kb, args: {query: refunds}}
+            - {tool: refund_order, args: {order_id: 5}}
+
+      - name: same_tool_different_arguments_is_not_redundant
+        expected: 0.0
+        trajectory:
+          calls:
+            - {tool: search_kb, args: {query: refunds}}
+            - {tool: search_kb, args: {query: escalation}}
+
+      - name: no_calls_at_all
+        expected: null
+        trajectory: {tools: []}
+
+  - metric: trajectory.loop_detected
+    cases:
+      - name: three_consecutive_identical_calls
+        expected: 1.0
+        trajectory:
+          calls:
+            - {tool: search_kb, args: {query: x}}
+            - {tool: search_kb, args: {query: x}}
+            - {tool: search_kb, args: {query: x}}
+
+      - name: two_is_not_a_loop
+        expected: 0.0
+        trajectory:
+          calls:
+            - {tool: search_kb, args: {query: x}}
+            - {tool: search_kb, args: {query: x}}
+
+      - name: repeats_must_be_consecutive
+        expected: 0.0
+        trajectory:
+          calls:
+            - {tool: search_kb, args: {query: x}}
+            - {tool: get_order, args: {order_id: 1}}
+            - {tool: search_kb, args: {query: x}}
+            - {tool: get_order, args: {order_id: 1}}
+            - {tool: search_kb, args: {query: x}}
+
+      - name: empty_trajectory
+        expected: 0.0
+        trajectory: {tools: []}
+
+  - metric: trajectory.error_recovery_rate
+    cases:
+      - name: recovered_immediately
+        expected: 1.0
+        trajectory:
+          calls:
+            - {tool: refund_order, ok: false}
+            - {tool: refund_order, ok: true}
+
+      - name: never_recovered
+        expected: 0.0
+        trajectory:
+          calls:
+            - {tool: refund_order, ok: false}
+            - {tool: send_email, ok: true}
+            - {tool: search_kb, ok: true}
+
+      - name: recovery_outside_the_window_does_not_count
+        note: the retry lands 3 calls later; the window is 2
+        expected: 0.0
+        trajectory:
+          calls:
+            - {tool: refund_order, ok: false}
+            - {tool: search_kb, ok: true}
+            - {tool: lookup_customer, ok: true}
+            - {tool: refund_order, ok: true}
+
+      - name: one_of_two_failures_recovered
+        expected: 0.5
+        trajectory:
+          calls:
+            - {tool: refund_order, ok: false}
+            - {tool: refund_order, ok: true}
+            - {tool: send_email, ok: false}
+            - {tool: search_kb, ok: true}
+
+      - name: nothing_failed
+        note: skipped, not 1.0 — "never had to recover" is not "recovered well"
+        expected: null
+        trajectory:
+          calls: [{tool: refund_order, ok: true}]
+
+  - metric: trajectory.grounded_reasoning
+    cases:
+      - name: every_claim_supported_by_a_tool_output
+        note: attribution is per-passage — each claim must be supported by a single evidence item
+        expected: 1.0
+        trajectory:
+          reasoning:
+            - "The customer tier is gold. The order total is 249 dollars."
+          calls:
+            - {tool: lookup_customer, ok: true, output: "The customer tier is gold."}
+            - {tool: get_order, ok: true, output: "The order total is 249 dollars."}
+
+      - name: half_the_claims_are_unsupported
+        expected: 0.5
+        trajectory:
+          reasoning:
+            - "The order total is 249 dollars. The customer has three open complaints."
+          calls:
+            - {tool: get_order, ok: true, output: "The order total is 249 dollars."}
+
+      - name: no_reasoning_recorded
+        expected: null
+        trajectory:
+          calls: [{tool: get_order, ok: true, output: "anything"}]
