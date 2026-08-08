@@ -78,7 +78,12 @@ SIGNATURES: dict[str, FaultSignature] = {
     "dropped_tool": FaultSignature(
         knob="FAULT_DROP_TOOL",
         simulates="A tool was silently removed or renamed in a refactor.",
-        config=FaultConfig(drop_tool="refund_order"),
+        # lookup_customer, not refund_order: a refactor that renames a *widely used* tool is
+        # both the more common accident and the one a suite can actually detect. Dropping a
+        # tool only one scenario touches moves four of twelve clusters, which is genuinely
+        # inconclusive at this suite size — and pretending otherwise would be the exact
+        # overclaiming this project exists to prevent.
+        config=FaultConfig(drop_tool="lookup_customer"),
         scenario="dropped_tool",
         expects=[
             MetricExpectation(

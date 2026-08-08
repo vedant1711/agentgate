@@ -356,6 +356,13 @@ class MetricComparison(FrozenModel):
         default=None, description="Pearson r between paired scores — the variance pairing bought."
     )
     effect_size: EffectSize | None = None
+    analysis_units: list[float] = Field(
+        default_factory=list,
+        description="The per-task (or per-cluster) differences the tests ran on, "
+        "direction-normalised. Stored so a verdict can be recomputed at a different margin, "
+        "alpha, or FDR level without re-running the agent — which is what makes the gate "
+        "re-rulable and the interactive demo's margin slider honest.",
+    )
     regression_test: PairedTestResult
     noninferiority_test: PairedTestResult
     permutation_test: PairedTestResult | None = None

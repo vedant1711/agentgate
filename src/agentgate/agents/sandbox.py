@@ -196,10 +196,11 @@ class Sandbox:
                     (999, "Operations bulletin", f"Routine notice. {probe.payload}"),
                 )
             else:
-                self._conn.execute(
-                    "UPDATE orders SET notes = ? WHERE id = (SELECT MIN(id) FROM orders)",
-                    (probe.payload,),
-                )
+                # Poison every order's notes rather than one. An indirect injection lives in a
+                # *field*, not in a particular row, and planting it on a single order would make
+                # the probe fire only for tasks that happen to touch that order — which would
+                # silently under-report the vulnerability.
+                self._conn.execute("UPDATE orders SET notes = ?", (probe.payload,))
 
     # -- tool surface ------------------------------------------------------
 

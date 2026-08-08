@@ -206,6 +206,14 @@
       "additionalProperties": false,
       "description": "Everything the gate needs to rule on one metric (C2 + C3).",
       "properties": {
+        "analysis_units": {
+          "description": "The per-task (or per-cluster) differences the tests ran on, direction-normalised. Stored so a verdict can be recomputed at a different margin, alpha, or FDR level without re-running the agent \u2014 which is what makes the gate re-rulable and the interactive demo's margin slider honest.",
+          "items": {
+            "type": "number"
+          },
+          "title": "Analysis Units",
+          "type": "array"
+        },
         "baseline": {
           "$ref": "#/$defs/Estimate"
         },

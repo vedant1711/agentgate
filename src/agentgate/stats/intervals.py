@@ -176,6 +176,37 @@ def clustered_interval(
     )
 
 
+def clip_estimate(estimate: Estimate, low: float = 0.0, high: float = 1.0) -> Estimate:
+    """Clip an interval to a metric's natural bounds.
+
+    A normal-approximation interval on a proportion can extend below 0 or above 1, and printing
+    "success rate 0.167 [-0.054, 0.387]" tells the reader the arithmetic was not thought about.
+    Clipping is applied only to genuinely bounded quantities, and the method label records it so
+    the clip is visible rather than silent.
+
+    Args:
+        estimate: The estimate to clip.
+        low: Lower bound of the metric's range.
+        high: Upper bound.
+
+    Returns:
+        The clipped estimate, or the original when no bound was crossed.
+    """
+    if estimate.ci_low is None or estimate.ci_high is None:
+        return estimate
+    clipped_low = max(low, estimate.ci_low)
+    clipped_high = min(high, estimate.ci_high)
+    if clipped_low == estimate.ci_low and clipped_high == estimate.ci_high:
+        return estimate
+    return estimate.model_copy(
+        update={
+            "ci_low": clipped_low,
+            "ci_high": clipped_high,
+            "method": f"{estimate.method}[clipped]",
+        }
+    )
+
+
 def se_inflation(naive: Estimate, clustered: Estimate) -> float | None:
     """Ratio of clustered to naive standard error — the number E3 says can exceed 3."""
     if naive.se in (None, 0.0) or clustered.se is None:

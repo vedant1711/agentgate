@@ -401,15 +401,19 @@ def run_paired_test(
     alternative: Alternative = "two-sided",
     normality_alpha: float = 0.05,
     forced: str | None = None,
+    iterations: int = DEFAULT_PERMUTATIONS,
+    seed: int = 20260101,
 ) -> PairedTestResult:
     """Run whichever paired test the data warrants, recording the choice.
 
     Args:
-        differences: Per-task differences.
+        differences: Per-task (or per-cluster) differences.
         shift: Non-inferiority margin added before testing.
         alternative: Test direction.
         normality_alpha: Shapiro-Wilk threshold.
-        forced: Force ``"paired_t"`` or ``"wilcoxon"`` instead of auto-selecting.
+        forced: Force ``"paired_t"``, ``"wilcoxon"``, or ``"permutation"``.
+        iterations: Resamples, when the permutation test is used.
+        seed: RNG seed for the permutation test.
 
     Returns:
         The test result, with ``selection_reason`` explaining the choice.
@@ -419,11 +423,30 @@ def run_paired_test(
         if forced
         else choose_test(differences, normality_alpha=normality_alpha)
     )
-    result = (
-        wilcoxon_test(differences, shift=shift, alternative=alternative)
-        if name == "wilcoxon"
-        else paired_t_test(differences, shift=shift, alternative=alternative)
-    )
+    if name == "wilcoxon" and shift != 0.0 and not forced:
+        # A non-inferiority margin is defined on the **mean**, and Wilcoxon tests a median or
+        # distributional shift. On skewed differences the two genuinely disagree — a candidate
+        # whose mean sits comfortably inside the margin can still have a median outside it — and
+        # answering the wrong question with a small p-value is worse than answering nothing.
+        # The permutation test is distribution-free *and* about the mean, so it is used instead.
+        name = "permutation"
+        reason = (
+            f"{reason}; switched to the sign-flip permutation test because a non-inferiority "
+            f"margin is defined on the mean while Wilcoxon tests a median shift"
+        )
+
+    if name == "wilcoxon":
+        result = wilcoxon_test(differences, shift=shift, alternative=alternative)
+    elif name == "permutation":
+        result = permutation_test(
+            differences,
+            shift=shift,
+            alternative=alternative,
+            iterations=iterations,
+            seed=seed,
+        )
+    else:
+        result = paired_t_test(differences, shift=shift, alternative=alternative)
     return result.model_copy(update={"selection_reason": reason})
 
 

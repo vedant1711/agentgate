@@ -22,7 +22,7 @@ from agentgate.schemas.results import (
     PairedTestResult,
 )
 from agentgate.stats.aggregate import repetition_scores, task_means
-from agentgate.stats.intervals import clt_interval, clustered_interval
+from agentgate.stats.intervals import clip_estimate, clt_interval, clustered_interval
 from agentgate.stats.paired import (
     DEFAULT_PERMUTATIONS,
     PairedData,
@@ -93,6 +93,24 @@ def build_paired_data(
     )
 
 
+def cluster_mean_differences(data: PairedData) -> list[float]:
+    """Per-cluster mean differences — the independent units when a suite declares clusters.
+
+    Args:
+        data: Direction-normalised paired data.
+
+    Returns:
+        One difference per cluster, in cluster-id order. Falls back to per-task differences when
+        no clustering is present.
+    """
+    if not data.has_clusters:
+        return data.differences
+    groups: dict[str, list[float]] = {}
+    for value, cluster in zip(data.differences, data.clusters, strict=True):
+        groups.setdefault(cluster, []).append(value)
+    return [float(np.mean(groups[cluster])) for cluster in sorted(groups)]
+
+
 def _side_estimate(
     values: Sequence[float],
     clusters: Sequence[str],
@@ -150,9 +168,14 @@ def compare_metric(
 
     raw = build_paired_data(baseline, candidate, clusters=clusters)
     data = raw.directed(direction)
-    differences = data.differences
     n = data.n
     clustered = settings.use_clusters and data.has_clusters
+
+    # When tasks are clustered, the *tests* analyse cluster mean differences, not raw per-task
+    # differences. Testing at the task level while reporting a cluster-robust interval would be
+    # incoherent — and anti-conservative in exactly the direction E3 warns about, since the
+    # task-level test would treat five paraphrases of one scenario as five independent facts.
+    differences = cluster_mean_differences(data) if clustered else data.differences
 
     baseline_estimate = _side_estimate(
         raw.baseline, raw.clusters, level=settings.level, use_clusters=clustered
@@ -160,9 +183,18 @@ def compare_metric(
     candidate_estimate = _side_estimate(
         raw.candidate, raw.clusters, level=settings.level, use_clusters=clustered
     )
+    if template.dtype in ("binary", "proportion"):
+        baseline_estimate = clip_estimate(baseline_estimate)
+        candidate_estimate = clip_estimate(candidate_estimate)
     delta = difference_estimate(data, level=settings.level, use_clusters=clustered)
 
     notes: list[str] = []
+    if clustered:
+        notes.append(
+            f"clustered analysis: {n} tasks in {len(differences)} clusters. Tests and intervals "
+            f"both use per-cluster mean differences, so five paraphrases of one scenario count "
+            f"as one independent observation, not five (C1.3)."
+        )
     if n < 2:
         empty = PairedTestResult(test="none", p_one_sided=1.0, n_pairs=n)
         notes.append(f"only {n} paired task(s); no test is possible")
@@ -249,6 +281,7 @@ def compare_metric(
         candidate=candidate_estimate,
         delta=delta,
         margin=margin,
+        analysis_units=list(differences),
         correlation=correlation,
         effect_size=effect,
         regression_test=regression,

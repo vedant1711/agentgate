@@ -1,0 +1,95 @@
+name: Baseline on main
+
+# On merge, record the new baseline every future PR is compared against, append to the DuckDB
+# history, and publish the report gallery to Pages (E2, K3).
+#
+# Pages never sleeps, which is what makes the gallery the link that goes on a CV — unlike the
+# Playground, it is instant and permanent.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: baseline-main
+  cancel-in-progress: false
+
+jobs:
+  baseline:
+    name: record baseline and build the gallery
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --locked --dev || uv sync --dev
+
+      - name: Restore caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            .agentgate/cache.sqlite
+            .agentgate/agentgate.duckdb
+          key: agentgate-main-${{ runner.os }}-${{ github.sha }}
+          restore-keys: agentgate-main-${{ runner.os }}-
+
+      - name: Run the full suite and store the baseline
+        run: |
+          uv run agentgate run \
+            --suite suites/crm_ops \
+            --system baseline \
+            --store .agentgate/agentgate.duckdb \
+            --no-faults \
+            --run-id "baseline-${{ github.sha }}"
+
+      # Every demo scenario becomes a published report. These are the gallery's contents, and
+      # they are produced by the real pipeline rather than hand-written — the demo *is* the
+      # system, not a mock of it (K1).
+      - name: Build the report gallery
+        run: |
+          mkdir -p site/reports
+          for scenario in no_op dropped_tool prompt_degrade injection model_downgrade \
+                          sampling_drift flaky_dependency verbosity_attack; do
+            uv run agentgate demo \
+              --scenario "$scenario" \
+              --suite suites/crm_ops \
+              --html "site/reports/${scenario}.html" \
+              --no-markdown || true
+          done
+          uv run python scripts/build_gallery.py
+
+      - name: Build the docs site
+        run: |
+          uv run agentgate docs metrics --target docs/metrics.md
+          cp -r docs site/docs || true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
+
+      - name: Upload the run database
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentgate-history
+          path: .agentgate/agentgate.duckdb
+          if-no-files-found: warn

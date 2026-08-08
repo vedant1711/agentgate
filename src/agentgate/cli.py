@@ -225,6 +225,141 @@ def list_suites(
     console.print(table)
 
 
+@app.command("demo")
+def demo(
+    scenario: Annotated[
+        str, typer.Option("--scenario", help="Which regression to demonstrate.")
+    ] = "dropped_tool",
+    suite: Annotated[Path, typer.Option("--suite", help="Suite to run.")] = Path("suites/smoke"),
+    html: Annotated[
+        Path | None, typer.Option("--html", help="Also write the full HTML report here.")
+    ] = None,
+    markdown: Annotated[
+        bool, typer.Option("--markdown/--no-markdown", help="Print the PR comment.")
+    ] = True,
+    list_scenarios: Annotated[
+        bool, typer.Option("--list", help="List the available scenarios and exit.")
+    ] = False,
+) -> None:
+    """Run a baseline and a faulted candidate end to end, offline, and show the gate verdict."""
+    from agentgate.demo import expected_verdict, run_scenario, scenario_names
+    from agentgate.faults import SIGNATURES
+    from agentgate.report import render_comment, write_html
+
+    if list_scenarios:
+        table = Table("scenario", "simulates", "expected verdict")
+        for name in scenario_names():
+            signature = SIGNATURES.get(name)
+            table.add_row(
+                name,
+                signature.simulates if signature else "nothing — the no-op control",
+                expected_verdict(name),
+            )
+        console.print(table)
+        return
+
+    if scenario not in scenario_names():
+        console.print(f"[red]unknown scenario[/red] {scenario!r}")
+        console.print(f"try one of: {', '.join(scenario_names())}")
+        raise typer.Exit(code=1)
+
+    signature = SIGNATURES.get(scenario)
+    console.print(f"[bold]scenario:[/bold] {scenario}")
+    if signature is not None:
+        console.print(f"[dim]simulates:[/dim] {signature.simulates}")
+        console.print(f"[dim]knob:[/dim] {signature.knob}")
+    else:
+        console.print("[dim]the no-op control: an identical candidate, which must PASS[/dim]")
+    console.print("[dim]running baseline and candidate offline in mock mode...[/dim]\n")
+
+    result = run_scenario(scenario, suite_path=suite)
+
+    if markdown:
+        console.print(render_comment(result.gate))
+    else:
+        console.print(f"verdict: [bold]{result.verdict}[/bold] (exit {result.exit_code})")
+
+    if html is not None:
+        console.print(f"[green]wrote[/green] {write_html(result.gate, html)}")
+
+    raise typer.Exit(code=result.exit_code)
+
+
+@app.command("compare")
+def compare(
+    baseline: Annotated[str, typer.Option("--baseline", help="Baseline run id.")],
+    candidate: Annotated[str, typer.Option("--candidate", help="Candidate run id.")],
+    store: Annotated[Path, typer.Option("--store", help="DuckDB file holding both runs.")] = Path(
+        ".agentgate/agentgate.duckdb"
+    ),
+    policy_path: Annotated[Path, typer.Option("--policy", help="Gate policy file.")] = Path(
+        "gate.yaml"
+    ),
+    html: Annotated[
+        Path | None, typer.Option("--html", help="Write the full HTML report here.")
+    ] = None,
+    comment: Annotated[
+        Path | None, typer.Option("--comment", help="Write the sticky PR comment markdown here.")
+    ] = None,
+    gate_json: Annotated[
+        Path | None, typer.Option("--gate-json", help="Write the machine-readable verdict here.")
+    ] = None,
+) -> None:
+    """Compare two stored runs and render the gate verdict. Exit code is the verdict."""
+    from agentgate.errors import SuiteMismatchError
+    from agentgate.gate import build_comparison, evaluate
+    from agentgate.report import render_comment, write_html
+    from agentgate.schemas.policy import GatePolicy
+    from agentgate.storage.duckdb_store import RunStore
+
+    policy = GatePolicy.load(policy_path) if policy_path.exists() else GatePolicy.default()
+
+    with RunStore(store, read_only=True) as run_store:
+        base_manifest = run_store.get_run(baseline)
+        cand_manifest = run_store.get_run(candidate)
+        if base_manifest is None or cand_manifest is None:
+            missing = baseline if base_manifest is None else candidate
+            console.print(f"[red]run not found in {store}:[/red] {missing}")
+            raise typer.Exit(code=4)
+        base_scores = run_store.load_scores(baseline)
+        cand_scores = run_store.load_scores(candidate)
+        clusters = run_store.clusters_for(candidate)
+
+    if not base_scores or not cand_scores:
+        console.print("[red]both runs must be scored before they can be compared[/red]")
+        console.print("re-run with `agentgate run --store <db>` so scores are persisted")
+        raise typer.Exit(code=4)
+
+    try:
+        comparison = build_comparison(
+            baseline_manifest=base_manifest,
+            candidate_manifest=cand_manifest,
+            baseline_results=base_scores,
+            candidate_results=cand_scores,
+            policy=policy,
+            clusters=clusters,
+        )
+    except SuiteMismatchError as exc:
+        console.print(f"[red]refused:[/red] {exc}")
+        raise typer.Exit(code=4) from exc
+
+    result = evaluate(comparison, policy)
+    console.print(render_comment(result))
+
+    if comment is not None:
+        comment.parent.mkdir(parents=True, exist_ok=True)
+        comment.write_text(render_comment(result), encoding="utf-8")
+        console.print(f"[green]wrote[/green] {comment}")
+    if html is not None:
+        console.print(f"[green]wrote[/green] {write_html(result, html)}")
+    if gate_json is not None:
+        gate_json.parent.mkdir(parents=True, exist_ok=True)
+        gate_json.write_text(result.verdict.model_dump_json(indent=2), encoding="utf-8")
+        console.print(f"[green]wrote[/green] {gate_json}")
+
+    raise typer.Exit(code=result.verdict.exit_code)
+
+
 @app.command("plan")
 def plan(
     target_mde: Annotated[

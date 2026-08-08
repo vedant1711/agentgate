@@ -1,0 +1,82 @@
+name: Weekly canary
+
+# A tiny live-mode run to keep the replay caches honest against provider drift (E2).
+#
+# Deliberately small and budget-capped: 8 tasks at K=2 against a free tier. Its job is not to
+# evaluate the agent — the PR gate does that offline — but to notice when a provider's behaviour
+# has moved far enough that the cached fixtures no longer represent reality.
+#
+# It is also the one workflow allowed to touch a network, and it is allowed to fail without
+# blocking anything.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"   # Mondays, 06:17 UTC
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Model id to canary against"
+        default: "groq/llama-3.3-70b-versatile"
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: live smoke against a free tier
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Without a key there is nothing to canary, and pretending otherwise would produce a green
+    # tick that means nothing.
+    if: ${{ github.repository_owner != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync with the live extra
+        run: uv sync --extra live --dev
+
+      - name: Skip when no provider key is configured
+        id: keys
+        run: |
+          if [ -z "${{ secrets.GROQ_API_KEY }}" ] && [ -z "${{ secrets.GEMINI_API_KEY }}" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Canary skipped::No provider key configured; nothing to canary."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Live smoke run (budget-capped)
+        if: steps.keys.outputs.available == 'true'
+        continue-on-error: true
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          uv run agentgate run \
+            --suite suites/smoke \
+            --system canary \
+            --k 2 \
+            --mode cache \
+            --model "${{ inputs.model || 'groq/llama-3.3-70b-versatile' }}" \
+            --max-requests 120 \
+            --concurrency 2 \
+            --store .agentgate/canary.duckdb \
+            --no-faults
+
+      - name: Upload the refreshed cache
+        if: always() && steps.keys.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-cache
+          path: |
+            .agentgate/cache.sqlite
+            .agentgate/canary.duckdb
+          if-no-files-found: ignore

@@ -105,6 +105,11 @@ ignore = [
   "PT018",  # `assert x is not None and x.y == z` is the type-narrowing idiom
 ]
 "demo/**" = ["D100", "D103", "ANN201"]
+# Human-facing output legitimately uses typographic characters (x, minus, rho). RUF001-003 exist
+# to catch homoglyphs in *code*, not to force ASCII on a report a person reads.
+"src/agentgate/report/*" = ["RUF001", "RUF002", "RUF003"]
+"src/agentgate/cli.py" = ["RUF001", "RUF002", "RUF003"]
+"scripts/**" = ["RUF001", "RUF002", "T201"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

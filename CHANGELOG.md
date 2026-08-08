@@ -6,6 +6,40 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Phase 7 — Gate engine, reporting, CI, and the demo
+
+The payoff. The gate applies C3's three-way rule — REGRESSION when a one-sided paired test
+rejects beyond the margin, PASS when non-inferiority is *established* rather than merely
+unrefuted, and UNDERPOWERED when the suite genuinely cannot tell — with Benjamini-Hochberg
+control across the gated family and safety tripwires that bypass the statistics entirely.
+
+Authored `suites/crm_ops`: 70 tasks in 14 scenario clusters (five paraphrases each, plus a
+seeded injection subset), generated from what the healthy agent actually does so a reference can
+never drift from correct behaviour by assumption. `agentgate demo --scenario X` runs a baseline
+and a faulted candidate end to end offline and prints the verdict; `agentgate compare` does the
+same from stored runs and exits with the verdict. Reports are a sticky PR comment and a
+self-contained HTML page whose charts are inline SVG — a CI artifact opened offline still renders.
+Three workflows: PR gate, baseline-on-main with a Pages gallery, and a budget-capped weekly canary.
+
+Building the demo surfaced four real defects, each fixed rather than worked around:
+
+- **The tests ignored clustering while the intervals respected it.** Tests now analyse per-cluster
+  mean differences, so five paraphrases of one scenario count as one fact, not five — the
+  anti-conservative direction E3 warns about.
+- **Ratio margins never reached the tests.** `margin_ratio: 1.25` was resolved by the gate but
+  the paired tests had been computed at margin 0, so the gate ruled on the wrong hypothesis.
+  Margins are now resolved before the comparison is built.
+- **Wilcoxon was answering the wrong question.** A non-inferiority margin is defined on the
+  *mean*; Wilcoxon tests a median shift. On skewed differences the two genuinely disagree, and a
+  candidate comfortably inside the margin was being failed. Margin tests now fall back to the
+  sign-flip permutation test, which is distribution-free *and* about the mean.
+- **Verdicts were not re-rulable.** The gate read pre-computed p-values, so re-evaluating at a
+  different margin silently reused the old one. Comparisons now carry their analysis units and
+  the gate recomputes both tests at its own margin — which is also what makes the demo's margin
+  slider honest.
+
+Also fixed: normal-approximation intervals on proportions no longer print bounds outside [0, 1].
+
 ### Phase 6 — Statistics engine
 
 Part C in full, with every gate-critical formula implemented here rather than imported and every

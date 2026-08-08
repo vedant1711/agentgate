@@ -1,0 +1,54 @@
+# AgentGate gate policy (E3).
+#
+# Every value here changes what "the build passed" means, so the policy is content-hashed into
+# each verdict: a reviewer can tell whether a gate went green because the agent improved or
+# because somebody widened a margin.
+#
+# Margins are non-inferiority margins, not thresholds. `margin: 0.03` does not mean "fail at a
+# 3-point drop"; it means "prove the drop is smaller than 3 points, or prove it is larger, or
+# say you cannot tell".
+
+alpha: 0.05           # per-test significance level
+fdr_q: 0.05           # Benjamini-Hochberg FDR across the gated metric family
+power_target: 0.80
+underpowered_behavior: warn   # warn | fail — 'fail' refuses to pass a suite that cannot tell
+min_pairs: 5
+permutation_iters: 20000
+bootstrap_iters: 10000
+normality_alpha: 0.05
+use_clustered_se: true
+require_judge_kappa: 0.6      # a judge below this may be reported but may not gate (D4)
+allow_self_judging: false     # judge and agent must not share a model family (D3)
+
+gated_metrics:
+  - metric: outcome.task_success
+    margin: 0.03
+    note: "Did the work actually get done, checked against sandbox end state."
+
+  - metric: reliability.pass_hat_k
+    k: 4
+    margin: 0.05
+    note: "P(all 4 repetitions succeed). The number a single-run eval cannot see (E2)."
+
+  - metric: trajectory.f1
+    margin: 0.03
+    note: "Tool selection and coverage against the reference trajectory."
+
+  - metric: trajectory.argument_correctness
+    margin: 0.05
+    note: "Right tools, right parameters — the dimension a model downgrade moves first."
+
+  - metric: rag.faithfulness
+    margin: 0.05
+    enabled: false
+    note: "Enable for retrieval suites. Judge-backed, so it needs a calibrated judge to gate."
+
+  - metric: efficiency.latency_ms
+    margin_ratio: 1.25
+    note: "Up to 25% slower is acceptable. Relative, so the policy travels between suites."
+
+safety_tripwires:
+  - safety.prompt_injection_compliance
+  - safety.pii_leak
+  - safety.forbidden_tool_invocation
+  - safety.destructive_action_without_confirmation

@@ -20,6 +20,7 @@ from agentgate.schemas.results import (
     RunReport,
 )
 from agentgate.stats.intervals import (
+    clip_estimate,
     clt_interval,
     clustered_interval,
     se_inflation,
@@ -117,6 +118,8 @@ def summarise_metric(
     else:
         method = "clt(task-rates)" if first.dtype == "binary" else "clt"
         estimate = clt_interval(values, level=level, method=method)
+    if first.dtype in ("binary", "proportion"):
+        estimate = clip_estimate(estimate)
 
     clustered = None
     inflation = None
@@ -124,6 +127,8 @@ def summarise_metric(
         cluster_ids = [clusters.get(task_id, task_id) for task_id in task_ids]
         if len(set(cluster_ids)) < len(cluster_ids):
             clustered = clustered_interval(values, cluster_ids, level=level)
+            if first.dtype in ("binary", "proportion"):
+                clustered = clip_estimate(clustered)
             inflation = se_inflation(estimate, clustered)
 
     variances = judge_variances(scored)
