@@ -38,7 +38,8 @@ jobs:
         run: uv python install 3.12
 
       - name: Sync dependencies
-        run: uv sync --locked --dev || uv sync --dev
+        # --extra docs is required: this job builds the mkdocs site it publishes.
+        run: uv sync --locked --extra docs --dev || uv sync --extra docs --dev
 
       - name: Restore caches
         uses: actions/cache@v4
