@@ -1,6 +1,6 @@
 {
   "snapshot_version": 1,
-  "agentgate_version": "0.1.0.dev0",
+  "agentgate_version": "0.1.0",
   "ci_level": 0.95,
   "note": "Every value carries its confidence interval and n. Metrics that did not apply to a suite are omitted rather than scored zero. Cells marked complete:false were only partially recorded and are not comparable to complete ones.",
   "n_cells": 2,

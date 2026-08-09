@@ -27,7 +27,7 @@ from agentgate.harness import (
     model_of,
     plan,
 )
-from agentgate.harness.export import build_snapshot, write_snapshot
+from agentgate.harness.export import build_snapshot, merge_snapshots, write_snapshot
 from agentgate.harness.leaderboard import Standing
 from agentgate.harness.render import load_snapshot, render_results, results_are_current
 from agentgate.harness.schedule import UNKNOWN_COST
@@ -642,3 +642,126 @@ def test_the_committed_results_page_matches_the_committed_snapshot() -> None:
     assert results_are_current(snapshot, page), (
         "docs/results.md is stale — run `agentgate docs results` and commit the result"
     )
+
+
+# ---------------------------------------------------------------------------
+# Snapshot merging — the distributed evidence base
+# ---------------------------------------------------------------------------
+
+
+def test_exporting_from_one_machine_does_not_delete_another_machines_evidence(
+    store: RunStore, suite: SuiteSpec, tmp_path: Path
+) -> None:
+    """The scenario that would have silently destroyed the committed evidence base.
+
+    Local models are recorded on a laptop; cloud models on a CI runner. Neither store holds the
+    other's cells, so an exporter that replaced the file would let whichever ran last wipe what
+    the other learned — and an empty snapshot is perfectly valid JSON, so nothing would complain.
+    """
+    target = tmp_path / "harness.json"
+
+    laptop = RunStore(tmp_path / "laptop.duckdb")
+    values = {task.id: 1.0 for task in suite.tasks}
+    seed_run(laptop, run_id="r-local", model_id="ollama_chat/local", suite=suite, values=values)
+    write_snapshot(laptop, target)
+    assert json.loads(target.read_text())["models"] == ["ollama_chat/local"]
+
+    # A CI runner whose store knows nothing about the local model.
+    seed_run(store, run_id="r-cloud", model_id="groq/cloud", suite=suite, values=values)
+    write_snapshot(store, target)
+
+    merged = json.loads(target.read_text())
+    assert merged["models"] == ["groq/cloud", "ollama_chat/local"]
+    assert merged["n_cells"] == 2
+    laptop.close()
+
+
+def test_an_empty_store_cannot_wipe_a_populated_snapshot(
+    store: RunStore, suite: SuiteSpec, tmp_path: Path
+) -> None:
+    target = tmp_path / "harness.json"
+    values = {task.id: 1.0 for task in suite.tasks}
+    seed_run(store, run_id="r1", model_id="m", suite=suite, values=values)
+    write_snapshot(store, target)
+
+    empty = RunStore(tmp_path / "empty.duckdb")
+    write_snapshot(empty, target)
+    empty.close()
+
+    assert json.loads(target.read_text())["models"] == ["m"]
+
+
+def test_remeasuring_a_cell_updates_it_rather_than_duplicating_it() -> None:
+    def cell(recorded_at: str, value: float) -> dict[str, object]:
+        return {
+            "suite": "s",
+            "model_id": "m",
+            "k": 3,
+            "recorded_at": recorded_at,
+            "metrics": [{"metric": "outcome.task_success", "value": value}],
+        }
+
+    merged = merge_snapshots(
+        {"cells": [cell("2026-01-01T00:00:00+00:00", 0.4)]},
+        {"cells": [cell("2026-06-01T00:00:00+00:00", 0.7)]},
+    )
+    assert merged["n_cells"] == 1
+    assert merged["cells"][0]["metrics"][0]["value"] == 0.7
+
+
+def test_an_older_recording_never_overwrites_a_newer_one() -> None:
+    """Sessions can land out of order; the newest measurement must still win."""
+
+    def cell(recorded_at: str, value: float) -> dict[str, object]:
+        return {
+            "suite": "s",
+            "model_id": "m",
+            "k": 3,
+            "recorded_at": recorded_at,
+            "metrics": [{"metric": "outcome.task_success", "value": value}],
+        }
+
+    merged = merge_snapshots(
+        {"cells": [cell("2026-06-01T00:00:00+00:00", 0.7)]},
+        {"cells": [cell("2026-01-01T00:00:00+00:00", 0.4)]},
+    )
+    assert merged["cells"][0]["metrics"][0]["value"] == 0.7
+
+
+def test_the_same_model_at_a_different_k_is_a_different_cell() -> None:
+    """K=1 and K=3 measure different things and must not silently replace each other."""
+    base = {
+        "suite": "s",
+        "model_id": "m",
+        "recorded_at": "2026-01-01T00:00:00+00:00",
+        "metrics": [],
+    }
+    merged = merge_snapshots({"cells": [{**base, "k": 1}]}, {"cells": [{**base, "k": 3}]})
+    assert merged["n_cells"] == 2
+
+
+def test_replace_is_available_for_a_deliberate_rebuild(
+    store: RunStore, suite: SuiteSpec, tmp_path: Path
+) -> None:
+    target = tmp_path / "harness.json"
+    values = {task.id: 1.0 for task in suite.tasks}
+    seed_run(store, run_id="r1", model_id="m", suite=suite, values=values)
+    write_snapshot(store, target)
+
+    empty = RunStore(tmp_path / "empty.duckdb")
+    write_snapshot(empty, target, merge=False)
+    empty.close()
+
+    assert json.loads(target.read_text())["cells"] == []
+
+
+def test_a_corrupt_snapshot_is_replaced_rather_than_crashing_the_session(
+    store: RunStore, suite: SuiteSpec, tmp_path: Path
+) -> None:
+    target = tmp_path / "harness.json"
+    target.write_text("{not json", encoding="utf-8")
+    values = {task.id: 1.0 for task in suite.tasks}
+    seed_run(store, run_id="r1", model_id="m", suite=suite, values=values)
+
+    write_snapshot(store, target)
+    assert json.loads(target.read_text())["models"] == ["m"]

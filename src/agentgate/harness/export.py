@@ -144,9 +144,63 @@ def build_snapshot(
     }
 
 
-def write_snapshot(store: RunStore, target: Path = DEFAULT_EXPORT, *, level: float = 0.95) -> Path:
-    """Write the snapshot as sorted, indented JSON so its git diffs stay readable."""
+def merge_snapshots(existing: dict[str, Any], fresh: dict[str, Any]) -> dict[str, Any]:
+    """Combine a previously committed snapshot with a newly exported one.
+
+    **Merging rather than replacing is a correctness requirement, not a convenience.** The
+    evidence base is recorded from more than one machine: local models run on a laptop that CI
+    cannot reach, cloud models run on a runner that has the keys. Neither store contains the
+    other's cells. An exporter that replaced the file would let whichever machine ran last delete
+    everything the other had learned — and it would do so silently, since an empty snapshot is a
+    perfectly valid JSON document.
+
+    Cells are keyed by ``(suite, model, k)``. Where both sides hold the same cell the newer
+    recording wins, so re-measuring a model updates it rather than duplicating it.
+
+    Args:
+        existing: The snapshot already on disk.
+        fresh: The snapshot just built from this machine's store.
+
+    Returns:
+        The union, with cells sorted so the file diffs cleanly.
+    """
+    by_key: dict[tuple[str, str, int], dict[str, Any]] = {}
+    for cell in (*existing.get("cells", []), *fresh.get("cells", [])):
+        key = (str(cell["suite"]), str(cell["model_id"]), int(cell["k"]))
+        previous = by_key.get(key)
+        if previous is None or str(cell["recorded_at"]) >= str(previous["recorded_at"]):
+            by_key[key] = cell
+
+    cells = [by_key[key] for key in sorted(by_key)]
+    merged = dict(fresh)
+    merged["cells"] = cells
+    merged["n_cells"] = len(cells)
+    merged["suites"] = sorted({str(cell["suite"]) for cell in cells})
+    merged["models"] = sorted({str(cell["model_id"]) for cell in cells})
+    return merged
+
+
+def write_snapshot(
+    store: RunStore, target: Path = DEFAULT_EXPORT, *, level: float = 0.95, merge: bool = True
+) -> Path:
+    """Write the snapshot as sorted, indented JSON so its git diffs stay readable.
+
+    Args:
+        store: The run database to export.
+        target: Where to write.
+        level: Confidence level for every interval.
+        merge: Fold this machine's cells into whatever ``target`` already holds. On by default —
+            see :func:`merge_snapshots` for why replacing is unsafe. Pass ``False`` only to
+            deliberately rebuild the file from one store.
+    """
     snapshot = build_snapshot(store, level=level)
+    if merge and target.exists():
+        try:
+            previous: dict[str, Any] = json.loads(target.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            previous = {}
+        if previous.get("cells"):
+            snapshot = merge_snapshots(previous, snapshot)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(snapshot, indent=2, sort_keys=False) + "\n", encoding="utf-8")
     return target

@@ -12,6 +12,7 @@ from agentgate.harness.export import (
     CellSnapshot,
     MetricSnapshot,
     build_snapshot,
+    merge_snapshots,
     write_snapshot,
 )
 from agentgate.harness.leaderboard import (
@@ -63,6 +64,7 @@ __all__ = [
     "build_trend",
     "estimate_seconds",
     "head_to_head",
+    "merge_snapshots",
     "model_of",
     "plan",
     "run_session",

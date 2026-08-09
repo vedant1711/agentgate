@@ -1,0 +1,129 @@
+name: Living harness
+
+# The loop that makes this a running project rather than a finished one.
+#
+# Once a week it records whatever cells it can afford against whatever providers have keys,
+# commits the updated evidence snapshot, and lets the Pages deploy pick it up. The repository's
+# git history then *is* the history of the evidence base — which is what makes "this project
+# improves itself over time" an auditable claim instead of a slogan.
+#
+# Three deliberate constraints:
+#
+#   * It is budget-capped in wall-clock minutes, not in cells. A session that runs out of time
+#     stops cleanly and the next one resumes, because recording is resumable by design.
+#   * With no provider keys it records nothing and says so, rather than producing a green tick
+#     that means nothing. Local Ollama is not available on a hosted runner, so cloud keys are the
+#     only way this job can do real work.
+#   * It commits only generated artifacts — the snapshot and the pages derived from it. It never
+#     touches source.
+
+on:
+  schedule:
+    - cron: "23 4 * * 0"   # Sundays, 04:23 UTC
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Wall-clock budget for the recording session"
+        default: "45"
+      k:
+        description: "Repetitions per task"
+        default: "3"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: living-harness
+  cancel-in-progress: false
+
+jobs:
+  record:
+    name: record, score, and commit what was learned
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --locked --extra docs --dev || uv sync --extra docs --dev
+
+      # The provider cache is the evidence base's raw material: a response recorded in any
+      # previous session is replayed for free in this one, so restoring it is what makes the
+      # budget buy new evidence rather than re-paying for old.
+      - name: Restore the provider cache and run store
+        uses: actions/cache@v4
+        with:
+          path: |
+            .agentgate/cache.sqlite
+            .agentgate/harness.duckdb
+          key: agentgate-harness-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: agentgate-harness-${{ runner.os }}-
+
+      - name: Report which providers are reachable
+        run: uv run agentgate models
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+
+      - name: Show the plan
+        run: uv run agentgate harness next --minutes "${{ inputs.minutes || 45 }}" --k "${{ inputs.k || 3 }}"
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+        continue-on-error: true
+
+      # A free tier that runs out mid-session is expected, not exceptional. Whatever was recorded
+      # before it stopped is kept, and the next session resumes from there.
+      - name: Record a session
+        run: |
+          uv run agentgate harness record \
+            --minutes "${{ inputs.minutes || 45 }}" \
+            --k "${{ inputs.k || 3 }}" \
+            --mode cache
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+        continue-on-error: true
+
+      - name: Export the evidence snapshot and regenerate the results page
+        run: |
+          uv run agentgate harness export --target results/harness.json
+          uv run agentgate docs results --target docs/results.md
+
+      - name: Show what was learned
+        run: |
+          uv run agentgate harness status
+          for suite in smoke crm_ops tau2_retail; do
+            echo "::group::leaderboard — $suite"
+            uv run agentgate leaderboard --suite "$suite" || true
+            echo "::endgroup::"
+          done
+
+      # Only generated artifacts. If nothing changed, nothing is committed — a session that
+      # learned nothing should leave no trace pretending otherwise.
+      - name: Commit the evidence, if any changed
+        run: |
+          if git diff --quiet -- results/harness.json docs/results.md; then
+            echo "no new evidence this session"
+            exit 0
+          fi
+          git config user.name "agentgate-harness[bot]"
+          git config user.email "noreply@github.com"
+          git add results/harness.json docs/results.md
+          git commit -m "chore(harness): record evidence from the $(date -u +%Y-%m-%d) session
+
+Automated. Only the evidence snapshot and the page generated from it are
+touched; no source changes. See the diff for what the project learned."
+          git push
