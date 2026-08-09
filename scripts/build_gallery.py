@@ -1,8 +1,8 @@
 """Build the static report gallery landing page (K3).
 
-GitHub Pages never sleeps, so this is the guaranteed-instant surface — the link that goes on a
-CV, unlike the Playground which can be cold for a minute. It indexes whatever reports the
-baseline workflow generated, so it can never advertise a report that does not exist.
+GitHub Pages never sleeps, so this is a guaranteed-instant surface. It indexes whatever
+reports the baseline workflow actually generated, so it can never advertise a report that
+does not exist.
 """
 
 from __future__ import annotations
@@ -79,7 +79,10 @@ COLOURS = {
 
 
 def build() -> Path:
-    """Write ``site/index.html`` indexing whatever reports exist."""
+    """Write ``site/gallery.html`` indexing whatever reports exist.
+
+    The root is the interactive demo; the gallery is one click in from it.
+    """
     REPORTS.mkdir(parents=True, exist_ok=True)
     cards: list[str] = []
     for report in sorted(REPORTS.glob("*.html")):
@@ -107,7 +110,7 @@ def build() -> Path:
         cards="\n".join(cards),
         generated=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
     )
-    target = SITE / "index.html"
+    target = SITE / "gallery.html"
     target.write_text(page, encoding="utf-8")
     return target
 

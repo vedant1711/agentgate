@@ -74,6 +74,11 @@ jobs:
           done
           uv run python scripts/build_gallery.py
 
+      # The landing page. Every slider position is evaluated here, by the real engine, so the
+      # published page can never disagree with the tool it demonstrates.
+      - name: Build the interactive demo
+        run: uv run python scripts/build_demo_site.py
+
       # The docs are a real mkdocs site rather than raw markdown, and it lands under /docs/ so the
       # report gallery keeps the root. --strict means a broken internal link fails the deploy
       # instead of shipping a dead page.

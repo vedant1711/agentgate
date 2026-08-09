@@ -6,6 +6,39 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Phase 9 — The interactive demo
+
+The Pages root is now a landing page whose centrepiece is a **gate you can operate**: drag the
+non-inferiority margin and watch REGRESSION become UNDERPOWERED become PASS, on real data, with
+the per-cluster differences plotted against the margin as it moves.
+
+**Every slider position is evaluated at build time by the real engine**, through the same
+`tests_at_margin()` the gate itself calls. The page looks values up; it does no statistics.
+Reimplementing a paired t-test in browser JavaScript would have been easier and would have quietly
+created a second, unverified implementation of the one thing this project must get right. A demo
+that disagreed with the tool it demonstrates would be worse than no demo — so a test asserts the
+grid and the gate rule identically at the policy's own margin and alpha.
+
+Writing that test exposed a real gap: the policy's margin was not a reachable slider position, so
+the page could show every verdict *except* the one the gate actually reached. The grid now snaps an
+interior step to the policy margin — never an endpoint, because zero must stay reachable. "Set the
+margin to zero and almost everything becomes UNDERPOWERED" is the demo's central lesson: proving
+exact equality needs far more data than anyone has, which is precisely why the gate asks the
+narrower question instead.
+
+Four scenarios are shown, chosen to reach four different verdicts — nothing changed, a tool
+vanished, output got wordier without getting worse, an injection payload leaked. Panels within a
+scenario are ranked by **how many distinct verdicts appear across the grid**, not by effect size:
+ranking by |delta| reliably surfaces token counts, whose deltas are in the hundreds and whose
+verdicts never budge. A slider that cannot change the answer teaches nothing.
+
+Two invariants are pinned by property tests: widening the margin can never make a verdict *more*
+severe, and tightening alpha can never make REGRESSION easier to declare. A slider that
+flip-flopped would mean the tests disagreed with themselves.
+
+The report gallery moved to `gallery.html` to give the root to the demo. Both are still generated
+from real pipeline output, never hand-written.
+
 ### Phase 8 — Documentation site
 
 A real mkdocs-material site under `docs/`, deployed to `/docs/` on Pages so the report gallery
