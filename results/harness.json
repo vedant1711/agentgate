@@ -3,12 +3,13 @@
   "agentgate_version": "0.1.0.dev0",
   "ci_level": 0.95,
   "note": "Every value carries its confidence interval and n. Metrics that did not apply to a suite are omitted rather than scored zero. Cells marked complete:false were only partially recorded and are not comparable to complete ones.",
-  "n_cells": 1,
+  "n_cells": 2,
   "suites": [
     "tau2_retail"
   ],
   "models": [
-    "ollama_chat/llama3.2:3b"
+    "ollama_chat/llama3.2:3b",
+    "ollama_chat/qwen2.5:7b"
   ],
   "cells": [
     {
@@ -270,6 +271,282 @@
           "value": 0.7658505908505908,
           "ci_low": 0.7110097499065796,
           "ci_high": 0.820691431794602,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "continuous"
+        }
+      ]
+    },
+    {
+      "suite": "tau2_retail",
+      "model_id": "ollama_chat/qwen2.5:7b",
+      "label": "Qwen2.5 7B",
+      "k": 3,
+      "run_id": "tau2-qwen25-7b-baseline",
+      "recorded_at": "2026-08-09T10:50:13.484894+00:00",
+      "agent": "tau2_retail_agent",
+      "n_tasks": 111,
+      "n_samples": 333,
+      "completion_rate": 0.952,
+      "complete": true,
+      "git_sha": "2237c0df6c14e24c91e41eee82251310bfb389cf",
+      "metrics": [
+        {
+          "metric": "efficiency.completion_tokens",
+          "value": 339.8618618618618,
+          "ci_low": 290.3098262864082,
+          "ci_high": 389.4138974373154,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "count"
+        },
+        {
+          "metric": "efficiency.est_cost_usd",
+          "value": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "continuous"
+        },
+        {
+          "metric": "efficiency.latency_ms",
+          "value": 58701.78251597904,
+          "ci_low": 48578.406653047336,
+          "ci_high": 68825.15837891074,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "continuous"
+        },
+        {
+          "metric": "efficiency.llm_roundtrips",
+          "value": 5.390390390390391,
+          "ci_low": 4.8547405194189635,
+          "ci_high": 5.926040261361819,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "count"
+        },
+        {
+          "metric": "efficiency.prompt_tokens",
+          "value": 11169.174174174173,
+          "ci_low": 9516.087917049395,
+          "ci_high": 12822.260431298952,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "count"
+        },
+        {
+          "metric": "efficiency.tool_calls_count",
+          "value": 5.720720720720721,
+          "ci_low": 4.861455811829425,
+          "ci_high": 6.579985629612017,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "count"
+        },
+        {
+          "metric": "efficiency.total_tokens",
+          "value": 11509.036036036036,
+          "ci_low": 9823.34362736551,
+          "ci_high": 13194.728444706561,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "count"
+        },
+        {
+          "metric": "judge.coherence",
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "continuous"
+        },
+        {
+          "metric": "judge.instruction_following",
+          "value": 0.35633675315558516,
+          "ci_low": 0.31806981896387304,
+          "ci_high": 0.3946036873472973,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "continuous"
+        },
+        {
+          "metric": "outcome.abstained",
+          "value": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "n": 111,
+          "method": "clt(task-rates)",
+          "direction": "lower_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "outcome.task_success",
+          "value": 0.11111111111111112,
+          "ci_low": 0.05298016706971506,
+          "ci_high": 0.16924205515250718,
+          "n": 111,
+          "method": "clt(task-rates)",
+          "direction": "higher_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "rag.answer_relevancy",
+          "value": 0.1785383512955969,
+          "ci_low": 0.16304452536313738,
+          "ci_high": 0.1940321772280564,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "safety.destructive_action_without_confirmation",
+          "value": 1.0,
+          "ci_low": 1.0,
+          "ci_high": 1.0,
+          "n": 27,
+          "method": "clt(task-rates)",
+          "direction": "lower_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "trajectory.any_order_match",
+          "value": 0.12612612612612611,
+          "ci_low": 0.06522248048327911,
+          "ci_high": 0.18702977176897312,
+          "n": 111,
+          "method": "clt(task-rates)",
+          "direction": "higher_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "trajectory.argument_correctness",
+          "value": 0.32110379507596454,
+          "ci_low": 0.2677138233534931,
+          "ci_high": 0.374493766798436,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.error_recovery_rate",
+          "value": 0.04675638371290545,
+          "ci_low": 0.011241455199204768,
+          "ci_high": 0.08227131222660614,
+          "n": 92,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.exact_match",
+          "value": 0.018018018018018018,
+          "ci_low": 0.0,
+          "ci_high": 0.042875493313030574,
+          "n": 111,
+          "method": "clt(task-rates)[clipped]",
+          "direction": "higher_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "trajectory.f1",
+          "value": 0.4152281268232089,
+          "ci_low": 0.3587139528576335,
+          "ci_high": 0.4717423007887843,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.in_order_match",
+          "value": 0.12012012012012012,
+          "ci_low": 0.05994476428221478,
+          "ci_high": 0.18029547595802548,
+          "n": 111,
+          "method": "clt(task-rates)",
+          "direction": "higher_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "trajectory.lcs_ratio",
+          "value": 0.43477455977455975,
+          "ci_low": 0.37248139855787843,
+          "ci_high": 0.4970677209912411,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.loop_detected",
+          "value": 0.03303303303303303,
+          "ci_low": 0.002937505813215762,
+          "ci_high": 0.0631285602528503,
+          "n": 111,
+          "method": "clt(task-rates)",
+          "direction": "lower_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "trajectory.precision",
+          "value": 0.522369917332975,
+          "ci_low": 0.44457297588459405,
+          "ci_high": 0.6001668587813559,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.recall",
+          "value": 0.4421182671182672,
+          "ci_low": 0.3791057340187799,
+          "ci_high": 0.5051308002177545,
+          "n": 111,
+          "method": "clt",
+          "direction": "higher_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.redundant_call_rate",
+          "value": 0.04747335056371714,
+          "ci_low": 0.02693611423126685,
+          "ci_high": 0.06801058689616743,
+          "n": 111,
+          "method": "clt",
+          "direction": "lower_is_better",
+          "dtype": "proportion"
+        },
+        {
+          "metric": "trajectory.single_tool_use",
+          "value": 0.23723723723723725,
+          "ci_low": 0.1581835512870024,
+          "ci_high": 0.3162909231874721,
+          "n": 111,
+          "method": "clt(task-rates)",
+          "direction": "higher_is_better",
+          "dtype": "binary"
+        },
+        {
+          "metric": "trajectory.step_efficiency",
+          "value": 0.7295139298691443,
+          "ci_low": 0.6716450441413019,
+          "ci_high": 0.7873828155969868,
           "n": 111,
           "method": "clt",
           "direction": "higher_is_better",

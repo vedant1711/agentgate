@@ -1,6 +1,6 @@
 [project]
 name = "agentgate"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "A statistical regression gate for AI agents — CI/CD blocking on statistically significant agent regressions."
 readme = "README.md"
 requires-python = ">=3.12"

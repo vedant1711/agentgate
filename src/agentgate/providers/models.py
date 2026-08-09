@@ -116,7 +116,14 @@ CATALOG: Final[tuple[ModelCard, ...]] = (
         provider="ollama_chat",
         params_b=7.6,
         local=True,
-        notes="Stronger than the 3B models; needs ~5GB of RAM headroom.",
+        approx_s_per_call=10.9,
+        notes=(
+            "Bigger is not better here. On tau2_retail it scores 0.111 [0.053, 0.169] against "
+            "llama3.2:3b's 0.180 — not separable — while using 5.4x the tokens and 4.4x the "
+            "wall time, following instructions worse (0.356 vs 0.619), and taking unconfirmed "
+            "destructive actions on 27 tasks. It is better at argument correctness. Needs ~5GB "
+            "of RAM headroom."
+        ),
     ),
     ModelCard(
         model_id="ollama_chat/gemma3:4b",

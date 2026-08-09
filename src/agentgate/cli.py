@@ -998,8 +998,47 @@ def versus(
         "candidate", f"{comparison.candidate.value:.3f} {_interval(comparison.candidate)}"
     )
     table.add_row("delta", f"{comparison.delta.value:+.3f} {_interval(comparison.delta)}")
-    table.add_row("analysis units", f"{comparison.analysis_units} (paired)")
+
+    units = comparison.analysis_units
+    better = sum(1 for value in units if value > 0)
+    worse = sum(1 for value in units if value < 0)
+    table.add_row(
+        "paired units",
+        f"{len(units)} {'clusters' if comparison.clustered else 'tasks'} "
+        f"({better} better, {worse} worse, {len(units) - better - worse} tied)",
+    )
+    if comparison.correlation is not None:
+        table.add_row("pair correlation", f"{comparison.correlation:+.3f}")
+    table.add_row(
+        "regression test",
+        f"{comparison.regression_test.test}, p={comparison.regression_test.p_one_sided:.4f}",
+    )
+    table.add_row(
+        "non-inferiority",
+        f"p={comparison.noninferiority_test.p_one_sided:.4f} at margin {comparison.margin:g}",
+    )
+    if comparison.power is not None:
+        table.add_row("detectable effect", f"{comparison.power.mde:.3f}")
     console.print(table)
+
+    # The point of the paired test is that it can separate models the marginal intervals cannot.
+    # Saying which happened is the difference between a result and a table of numbers.
+    delta = comparison.delta
+    undecided = (
+        delta.ci_low is None or delta.ci_high is None or delta.ci_low <= 0.0 <= delta.ci_high
+    )
+    if undecided:
+        console.print(
+            f"[yellow]Not separated.[/yellow] The interval for the difference includes zero, so "
+            f"the {abs(delta.value):.3f} gap in point estimates is not established — even paired, "
+            f"on {len(units)} units."
+        )
+    else:
+        direction = "worse than" if delta.value < 0 else "better than"
+        console.print(
+            f"[bold]Separated.[/bold] {candidate} is {direction} {baseline} on "
+            f"{comparison.metric}; the interval for the difference excludes zero."
+        )
 
 
 @app.command("trend")

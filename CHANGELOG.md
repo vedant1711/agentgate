@@ -6,6 +6,62 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-08-09
+
+First release. The gate works, the harness runs, and both have been exercised against real
+models on a published benchmark rather than against a specimen.
+
+### The second model, and the first result the project was built to produce
+
+`qwen2.5:7b` recorded against the same 111 τ² tasks at K=3: **333 units, 317 completed, 3.83M
+tokens, 5.4 hours.** Two models, identical tasks, identical seeds — so the comparison is paired.
+
+The headline is that **the bigger model is not better, and the harness will not say that it is.**
+
+| metric | llama3.2:3b | qwen2.5:7b |
+|---|---|---|
+| `outcome.task_success` | 0.180 [0.108, 0.252] | 0.111 [0.053, 0.169] |
+| `judge.coherence` | 0.994 [0.988, 1.000] | **1.000 [1.000, 1.000]** |
+| `judge.instruction_following` | **0.619 [0.559, 0.680]** | 0.356 [0.318, 0.395] |
+| `trajectory.recall` | 0.535 [0.476, 0.595] | 0.442 [0.379, 0.505] |
+| `trajectory.argument_correctness` | 0.145 [0.116, 0.173] | **0.321 [0.268, 0.374]** |
+| `trajectory.loop_detected` | 0.000 | 0.033 [0.003, 0.063] |
+| `efficiency.total_tokens` | 2,129 | 11,509 |
+| `efficiency.latency_ms` | 13,260 | 58,702 |
+
+**On task success, the leaderboard refuses to rank them** — the intervals overlap, so both sit in
+tier 1. The paired test agrees and is more informative: delta −0.069 [−0.159, 0.021], 111 tasks,
+10 better / 17 worse / 84 tied, p=0.14. Someone eyeballing 0.18 against 0.11 would report a 62%
+relative difference; the suite's minimum detectable effect is 0.115, and the observed gap is 0.069.
+**The gap is smaller than what this suite can resolve, and the honest answer is that we cannot
+tell.** That is the entire project in one result.
+
+Worth noting: the pair correlation is only **+0.059**. Pairing bought almost nothing here, because
+two different model families succeed and fail on *different* tasks. Pairing is not a free win — it
+pays when systems are related, and this measured it rather than assuming it.
+
+**Three things the evidence does establish**, on non-overlapping intervals:
+
+- **Instruction following is worse** on the bigger model (0.356 vs 0.619), while judged coherence
+  is *perfect*. Coherence at 1.000 with task success at 0.111 is a metric proving its own
+  uselessness as a discriminator.
+- **Argument correctness is better** (0.321 vs 0.145). The bigger model fills arguments in more
+  accurately while recovering fewer of the right tool calls — a genuinely mixed profile that a
+  single blended score would have erased.
+- **`safety.destructive_action_without_confirmation` fired on 79 samples across 27 tasks** for
+  `qwen2.5:7b`, and was **skipped on all 333** for `llama3.2:3b`. Every destructive action the
+  bigger model took was unconfirmed. Under the gate this is a SAFETY_FAIL, which bypasses the
+  statistics entirely — no margin, no p-value, no discussion.
+
+  The honest caveat: llama did not *avoid* unconfirmed destruction so much as barely act at all
+  (2.0 LLM round trips against 5.4). A safety metric that never applies is not the same as a
+  safety metric that passes, and the harness records it as skipped rather than as a zero for
+  exactly that reason.
+
+`agentgate versus` no longer dumps the raw analysis-units array — it reports the paired split,
+the correlation, both one-sided p-values, and the detectable effect, then says in a sentence
+whether the models were separated.
+
 ### Phase 8 — Parity with RAGAS and DeepEval
 
 `docs/parity.md` states, metric by metric, exactly which AgentGate metric corresponds to which
