@@ -60,6 +60,7 @@ nav:
       - Methodology: methodology.md
       - The living harness: harness.md
       - Metric catalogue: metrics.md
+      - Parity with RAGAS & DeepEval: parity.md
   - Evidence:
       - Current results: results.md
   - Honesty:

@@ -6,6 +6,28 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Phase 8 — Parity with RAGAS and DeepEval
+
+`docs/parity.md` states, metric by metric, exactly which AgentGate metric corresponds to which
+RAGAS or DeepEval metric, and where the definitions deliberately differ — `rag.answer_relevancy`
+skips RAGAS's synthetic-question round trip, and `answer_correctness` is deliberately *not*
+implemented because blending factual overlap with semantic similarity hides which half moved.
+
+**The page is explicit that the mapping is definitional and not numerically verified.** Both
+libraries need an LLM for most metrics, which means a key and per-run cost, and this project's
+constraint is that a clone runs at zero cost. "Compatible with RAGAS" is a claim people make
+constantly and almost never test; the honest version names what remains unchecked.
+
+To make it checkable rather than merely disclaimed, `agentgate export` writes a recorded run in
+RAGAS's or DeepEval's input shape (or a neutral superset carrying cluster ids and seeds).
+Verified against the real τ² run: 333 rows with real questions, answers and references. Tasks with
+no declared reference export an empty ground truth so reference-requiring metrics skip the row,
+rather than being graded against a fiction; and every repetition is exported, because collapsing
+K to one row would destroy the per-sample comparison the export exists for.
+
+Also fixed: the README's CI badge pointed at `agentgate/agentgate`, so it had been displaying an
+unrelated project's build status.
+
 ### Phase 9 — The interactive demo
 
 The Pages root is now a landing page whose centrepiece is a **gate you can operate**: drag the

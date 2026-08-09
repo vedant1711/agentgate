@@ -4,9 +4,13 @@
 that fails the build — except it knows the difference between "your agent got worse" and
 "your sample was small."
 
-[![CI](https://github.com/agentgate/agentgate/actions/workflows/ci.yml/badge.svg)](https://github.com/agentgate/agentgate/actions/workflows/ci.yml)
+[![CI](https://github.com/vedant1711/agentgate/actions/workflows/ci.yml/badge.svg)](https://github.com/vedant1711/agentgate/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
+
+**[Try the gate →](https://vedant1711.github.io/agentgate/)** · drag the margin and watch a verdict
+change on real data · **[Docs](https://vedant1711.github.io/agentgate/docs/)** ·
+**[Report gallery](https://vedant1711.github.io/agentgate/gallery.html)**
 
 ---
 
@@ -60,8 +64,8 @@ Under active construction. See [CHANGELOG.md](CHANGELOG.md) for what has landed.
 | 5 | Judge subsystem | ✅ |
 | 6 | Statistics engine | ✅ |
 | 7 | Gate, CI, reporting, demo | ✅ |
-| 8 | Hardening and comparability | ⏳ |
-| 9 | Public demo deployment | ⏳ |
+| 8 | Real models, τ²-bench, living harness, docs site | ✅ |
+| 9 | Interactive public demo | ✅ |
 
 ## Quickstart
 

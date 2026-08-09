@@ -887,6 +887,45 @@ def docs_results(
     console.print(f"[green]wrote[/green] {write_results(snapshot, target)}")
 
 
+@app.command("export")
+def export(
+    run_id: Annotated[str, typer.Option("--run-id", help="Run to export.")],
+    suite: Annotated[Path, typer.Option("--suite", "-s", help="Suite the run used.")],
+    target: Annotated[Path, typer.Option("--target", "-t", help="Output JSONL file.")],
+    store: Annotated[Path, typer.Option("--store", help="DuckDB file holding the run.")] = Path(
+        ".agentgate/agentgate.duckdb"
+    ),
+    fmt: Annotated[str, typer.Option("--format", help="ragas | deepeval | jsonl")] = "ragas",
+) -> None:
+    """Export a recorded run in another evaluation library's input format.
+
+    Lets the same trajectories be scored by RAGAS or DeepEval and compared against AgentGate's
+    own numbers per sample — which is the only comparison that establishes two implementations
+    measure the same thing.
+    """
+    from typing import cast
+
+    from agentgate.errors import ConfigError
+    from agentgate.interop import ExportFormat, export_run
+    from agentgate.runner import load_suite
+    from agentgate.storage.duckdb_store import RunStore
+
+    try:
+        with RunStore(store, read_only=True) as run_store:
+            written = export_run(
+                run_store,
+                run_id=run_id,
+                suite=load_suite(suite),
+                target=target,
+                fmt=cast("ExportFormat", fmt),
+            )
+    except ConfigError as exc:
+        console.print(f"[red]cannot export:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(f"[green]wrote[/green] {target} ({written} rows, {fmt} format)")
+
+
 @app.command("leaderboard")
 def leaderboard(
     suite: Annotated[str, typer.Option("--suite", help="Suite name to rank on.")],
