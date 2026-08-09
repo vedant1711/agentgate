@@ -41,7 +41,7 @@ interval by a factor of `√K` for nothing.
 **Clusters, when the suite declares them.** `suites/crm_ops` contains five paraphrases of each
 scenario. Those five are one fact, not five. Both the tests and the intervals therefore operate
 on **per-cluster mean differences**. Implemented in
-[`stats/compare.py`](../src/agentgate/stats/compare.py).
+[`stats/compare.py`](https://github.com/vedant1711/agentgate/blob/main/src/agentgate/stats/compare.py).
 
 ---
 

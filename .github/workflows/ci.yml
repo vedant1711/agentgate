@@ -47,6 +47,16 @@ jobs:
       - name: JSON Schemas in sync
         run: uv run agentgate schema check
 
+      # Generated docs must match their sources. A results page that drifts from the evidence is
+      # worse than no results page: it presents a stale number with the authority of a fresh one.
+      - name: Generated docs in sync
+        run: |
+          uv run agentgate docs metrics --check
+          uv run agentgate docs results --check
+
+      - name: Docs site builds
+        run: uv run mkdocs build --strict
+
       - name: Unit and property tests
         run: uv run pytest -m "not slow and not live" --cov --cov-report=xml --cov-report=term
 

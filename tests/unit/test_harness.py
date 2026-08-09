@@ -8,6 +8,7 @@ tests are about refusing to claim things.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -26,10 +27,12 @@ from agentgate.harness import (
     model_of,
     plan,
 )
+from agentgate.harness.export import build_snapshot, write_snapshot
 from agentgate.harness.leaderboard import Standing
+from agentgate.harness.render import load_snapshot, render_results, results_are_current
 from agentgate.harness.schedule import UNKNOWN_COST
 from agentgate.harness.trend import INCOMPARABLE, REGRESSED, STABLE
-from agentgate.providers.models import get_card
+from agentgate.providers.models import ModelCard, get_card
 from agentgate.schemas import (
     Estimate,
     MetricFamily,
@@ -213,8 +216,11 @@ def test_completion_rate_is_about_the_model_not_the_harness() -> None:
 
 
 def test_a_model_with_no_measured_rate_has_no_invented_cost() -> None:
+    """Deliberately not pinned to a catalogue entry: measuring a model would break that."""
+    untimed = ModelCard(model_id="x/untimed", label="Untimed", provider="ollama_chat")
+    assert untimed.approx_s_per_call is None
+    assert estimate_seconds(untimed, n_tasks=10, k=3) == UNKNOWN_COST
     assert estimate_seconds(None, n_tasks=10, k=3) == UNKNOWN_COST
-    assert estimate_seconds(get_card("ollama_chat/qwen2.5:7b"), n_tasks=10, k=3) == UNKNOWN_COST
 
 
 def test_cost_estimates_scale_with_tasks_and_repetitions() -> None:
@@ -252,13 +258,15 @@ def test_unknown_cost_cells_are_deferred_so_one_slow_model_cannot_eat_a_session(
     queued = plan(
         Ledger([]),
         suites=[suite.name],
-        models=["ollama_chat/qwen2.5:7b", "mock/agent"],
+        # An id absent from the catalogue has no measured rate by construction, so this test
+        # cannot be broken later by timing a real model.
+        models=["x/never-timed", "mock/agent"],
         k=1,
         budget_seconds=3600,
         sizes={suite.name: len(suite.tasks)},
     )
     assert [cell.cell.model_id for cell in queued.cells] == ["mock/agent"]
-    assert [cell.cell.model_id for cell in queued.deferred] == ["ollama_chat/qwen2.5:7b"]
+    assert [cell.cell.model_id for cell in queued.deferred] == ["x/never-timed"]
 
 
 def test_work_that_does_not_fit_the_budget_is_deferred_not_dropped(suite: SuiteSpec) -> None:
@@ -552,3 +560,85 @@ def test_now_is_not_used_anywhere_in_a_trend(store: RunStore, suite: SuiteSpec) 
     )
     assert trend.points[0].recorded_at == FIXED_TIME
     assert trend.points[0].recorded_at < datetime.now(UTC)
+
+
+# ---------------------------------------------------------------------------
+# Evidence snapshot and the generated results page
+# ---------------------------------------------------------------------------
+
+
+def test_the_snapshot_carries_an_interval_and_an_n_for_every_value(
+    store: RunStore, suite: SuiteSpec
+) -> None:
+    """A bare number in a committed file is the artifact this project argues against."""
+    values = {task.id: 1.0 for task in suite.tasks}
+    seed_run(store, run_id="r1", model_id="ollama_chat/llama3.2:3b", suite=suite, values=values)
+
+    snapshot = build_snapshot(store)
+    assert snapshot["n_cells"] == 1
+    metrics = snapshot["cells"][0]["metrics"]
+    assert metrics, "a scored cell must contribute at least one metric"
+    for metric in metrics:
+        assert "ci_low" in metric
+        assert "ci_high" in metric
+        assert metric["n"] >= 1
+        assert metric["method"]
+
+
+def test_the_snapshot_labels_a_partial_recording_as_incomparable(
+    store: RunStore, suite: SuiteSpec
+) -> None:
+    values = {task.id: 1.0 for task in suite.tasks}
+    seed_run(store, run_id="r1", model_id="m", suite=suite, values=values)
+    store._conn.execute("DELETE FROM samples WHERE run_id = 'r1' AND rep = 1")
+
+    assert build_snapshot(store)["cells"][0]["complete"] is False
+
+
+def test_the_snapshot_is_written_sorted_so_its_diffs_stay_readable(
+    store: RunStore, suite: SuiteSpec, tmp_path: Path
+) -> None:
+    """The committed diff is how 'the project improves itself' becomes auditable."""
+    values = {task.id: 1.0 for task in suite.tasks}
+    seed_run(store, run_id="r-b", model_id="zeta", suite=suite, values=values)
+    seed_run(store, run_id="r-a", model_id="alpha", suite=suite, values=values)
+
+    target = tmp_path / "harness.json"
+    write_snapshot(store, target)
+    written = json.loads(target.read_text(encoding="utf-8"))
+    assert [cell["model_id"] for cell in written["cells"]] == ["alpha", "zeta"]
+    assert target.read_text(encoding="utf-8").endswith("\n")
+
+
+def test_the_results_page_prints_every_interval(store: RunStore, suite: SuiteSpec) -> None:
+    values = {task.id: 1.0 for task in suite.tasks}
+    seed_run(store, run_id="r1", model_id="ollama_chat/llama3.2:3b", suite=suite, values=values)
+
+    page = render_results(build_snapshot(store))
+    assert "95% CI" in page
+    assert "Llama 3.2 3B" in page
+    assert "NOT" not in page or "not" in page.lower()
+    # The tau2 caveat must survive into anything published.
+    assert "single-turn adaptation" in page
+
+
+def test_the_results_page_says_so_when_nothing_has_been_recorded() -> None:
+    page = render_results({"cells": [], "suites": [], "models": [], "ci_level": 0.95})
+    assert "No model has been recorded yet" in page
+
+
+def test_a_missing_snapshot_names_the_command_that_creates_it(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="harness export"):
+        load_snapshot(tmp_path / "absent.json")
+
+
+def test_the_committed_results_page_matches_the_committed_snapshot() -> None:
+    """The CI guard, exercised locally: generated docs must never drift from their source."""
+    repo = Path(__file__).resolve().parents[2]
+    snapshot = repo / "results" / "harness.json"
+    page = repo / "docs" / "results.md"
+    if not snapshot.exists():
+        pytest.skip("no evidence snapshot committed yet")
+    assert results_are_current(snapshot, page), (
+        "docs/results.md is stale — run `agentgate docs results` and commit the result"
+    )

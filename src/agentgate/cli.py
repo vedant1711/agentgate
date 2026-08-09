@@ -857,6 +857,36 @@ def harness_export(
     console.print(f"[green]wrote[/green] {written}")
 
 
+@docs_app.command("results")
+def docs_results(
+    snapshot: Annotated[
+        Path, typer.Option("--snapshot", help="Committed evidence snapshot.")
+    ] = Path("results/harness.json"),
+    target: Annotated[Path, typer.Option("--target", "-t", help="Markdown file to write.")] = Path(
+        "docs/results.md"
+    ),
+    check: Annotated[
+        bool, typer.Option("--check", help="Fail when the committed page is stale.")
+    ] = False,
+) -> None:
+    """Generate the results page from the evidence snapshot.
+
+    Generated, never hand-written: a results page maintained by hand drifts from the results, and
+    a stale number presented confidently is worse than no number.
+    """
+    from agentgate.harness.render import results_are_current, write_results
+
+    if check:
+        if results_are_current(snapshot, target):
+            console.print(f"[green]ok[/green] {target} matches {snapshot}")
+            return
+        console.print(f"[red]stale:[/red] {target} does not match {snapshot}")
+        console.print("run [bold]agentgate docs results[/bold] and commit the result")
+        raise typer.Exit(code=1)
+
+    console.print(f"[green]wrote[/green] {write_results(snapshot, target)}")
+
+
 @app.command("leaderboard")
 def leaderboard(
     suite: Annotated[str, typer.Option("--suite", help="Suite name to rank on.")],

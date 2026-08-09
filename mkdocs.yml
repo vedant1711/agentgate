@@ -1,0 +1,71 @@
+site_name: AgentGate
+site_description: A statistical regression gate for AI agents — blocks a PR only when an agent has significantly regressed.
+site_url: https://vedant1711.github.io/agentgate/docs/
+repo_url: https://github.com/vedant1711/agentgate
+repo_name: vedant1711/agentgate
+copyright: Apache-2.0
+
+docs_dir: docs
+site_dir: site/docs
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: deep orange
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - How it works:
+      - Methodology: methodology.md
+      - The living harness: harness.md
+      - Metric catalogue: metrics.md
+  - Evidence:
+      - Current results: results.md
+  - Honesty:
+      - Limitations: limitations.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/vedant1711/agentgate

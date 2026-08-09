@@ -74,10 +74,13 @@ jobs:
           done
           uv run python scripts/build_gallery.py
 
+      # The docs are a real mkdocs site rather than raw markdown, and it lands under /docs/ so the
+      # report gallery keeps the root. --strict means a broken internal link fails the deploy
+      # instead of shipping a dead page.
       - name: Build the docs site
         run: |
           uv run agentgate docs metrics --target docs/metrics.md
-          cp -r docs site/docs || true
+          uv run mkdocs build --strict
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

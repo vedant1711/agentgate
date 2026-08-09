@@ -6,6 +6,26 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Phase 8 — Documentation site
+
+A real mkdocs-material site under `docs/`, deployed to `/docs/` on Pages so the report gallery
+keeps the root. Architecture and the tiering rule are explained with mermaid diagrams rather than
+prose alone.
+
+**The results page is generated, never hand-written.** `agentgate docs results` renders
+`docs/results.md` from the committed evidence snapshot, and `--check` fails CI when the two
+disagree — the same guard already protecting the metric catalogue and the JSON Schemas. A results
+page maintained by hand drifts from the results, and a stale number presented confidently is worse
+than no number at all. Every generated table prints the interval beside the value.
+
+CI now also builds the site with `--strict`, so a broken internal link fails the build instead of
+shipping a dead page. It caught one immediately: `methodology.md` linked to a source file by
+relative path, which resolves in the GitHub UI but not in a rendered site.
+
+Two harness tests were pinning `qwen2.5:7b` as the example of a model with unmeasured throughput —
+which recording that model would have falsified. They now construct an untimed card explicitly, so
+measuring a real model can never break a test about unmeasured ones.
+
 ### Phase 8 — The first full baseline, and what it caught
 
 `llama3.2:3b` recorded against all 111 τ² retail tasks at K=3: **333 units, 330 completed,
