@@ -49,6 +49,27 @@ PLAIN_METRIC_LABELS: dict[str, str] = {
     "trajectory.precision": "avoided unnecessary tool calls",
     "trajectory.argument_correctness": "passed the right arguments",
     "trajectory.step_efficiency": "worked without wasted steps",
+    "trajectory.f1": "tool-call overlap with gold",
+    "trajectory.lcs_ratio": "kept the gold sequence in order",
+    "trajectory.redundant_call_rate": "repeated a call it had already made",
+    "trajectory.loop_detected": "got stuck in a loop",
+    "trajectory.error_recovery_rate": "recovered after a tool error",
+    "trajectory.single_tool_use": "solved it with one tool call",
+    "reliability.pass_hat_k": "succeeded on every attempt",
+    "reliability.pass_at_1": "succeeded on the first attempt",
+    "reliability.pass_at_k": "succeeded on at least one attempt",
+    "outcome.abstained": "declined to answer",
+    "outcome.json_valid": "returned valid JSON",
+    "rag.answer_relevancy": "answered the question asked",
+    "rag.faithfulness": "stayed faithful to its sources",
+    "rag.context_precision": "retrieved relevant context",
+    "safety.destructive_action_without_confirmation": "acted destructively without confirming",
+    "safety.injection_compliance": "obeyed a hidden instruction",
+    "efficiency.tool_calls_count": "tool calls made",
+    "efficiency.llm_roundtrips": "model round trips",
+    "efficiency.prompt_tokens": "prompt tokens",
+    "efficiency.completion_tokens": "completion tokens",
+    "efficiency.est_cost_usd": "estimated cost",
     "judge.instruction_following": "followed the instructions",
     "judge.coherence": "wrote coherently",
     "efficiency.total_tokens": "tokens used",
@@ -312,6 +333,83 @@ VERDICT_PLAIN: dict[str, dict[str, str]] = {
 def verdict_copy(verdict: str) -> dict[str, str]:
     """Plain-language headline and explanation for a gate verdict."""
     return VERDICT_PLAIN.get(verdict, {"headline": verdict, "body": "See the report for details."})
+
+
+COMPARABLE_DTYPES = frozenset({"binary", "proportion"})
+"""Metrics whose deltas share a [-1, 1] scale and can honestly sit on one axis.
+
+A forest plot puts every row on a **single** x-axis, so it is only meaningful when the rows are
+commensurable. Token counts move in the hundreds and success rates in hundredths; drawing them on
+one axis would either flatten every quality metric to an invisible sliver or need a second scale,
+and a dual-scale chart is the fastest way to make a rigorous plot lie. Efficiency metrics are
+therefore shown separately, in their own units.
+"""
+
+
+def forest_rows(rulings: Sequence[Any]) -> list[dict[str, Any]]:
+    """Per-metric effect sizes with intervals, ready to plot as a forest plot.
+
+    A forest plot is the right form here because the question is not "how big is each number" but
+    "which of these intervals excludes the line" — the reader's eye performs the test.
+
+    Args:
+        rulings: The gate's per-metric rulings.
+
+    Returns:
+        One row per commensurable metric, worst effect first, each carrying its own verdict so
+        colour is never the only channel.
+    """
+    rows: list[dict[str, Any]] = []
+    for ruling in rulings:
+        comparison = ruling.comparison
+        if comparison.dtype not in COMPARABLE_DTYPES:
+            continue
+        delta = comparison.delta
+        if delta.ci_low is None or delta.ci_high is None:
+            continue
+        rows.append(
+            {
+                "metric": comparison.metric,
+                "label": plain_label(comparison.metric),
+                "delta": round(delta.value, 4),
+                "lo": round(delta.ci_low, 4),
+                "hi": round(delta.ci_high, 4),
+                "margin": round(ruling.margin, 4),
+                "verdict": ruling.verdict,
+                "blocks": bool(ruling.blocks),
+                # Two different numbers, and conflating them is the anti-conservative error this
+                # project exists to prevent. `n_pairs` counts paired *tasks*; the tests run on
+                # per-cluster means, so the independent sample size is the number of clusters —
+                # 14, not 70, on the crm_ops suite. Reporting the larger one overstates power
+                # fivefold.
+                "n_tasks": comparison.n_pairs,
+                "n_units": len(comparison.analysis_units) or comparison.n_pairs,
+                "clustered": bool(getattr(comparison, "clustered", False)),
+                "p": None if ruling.p_adjusted is None else round(ruling.p_adjusted, 4),
+                "baseline": round(comparison.baseline.value, 4),
+                "candidate": round(comparison.candidate.value, 4),
+            }
+        )
+    return sorted(rows, key=lambda row: row["delta"])
+
+
+def efficiency_rows(rulings: Sequence[Any]) -> list[dict[str, Any]]:
+    """Cost and latency metrics, kept off the forest plot because their units differ."""
+    rows: list[dict[str, Any]] = []
+    for ruling in rulings:
+        comparison = ruling.comparison
+        if comparison.dtype in COMPARABLE_DTYPES or not comparison.metric.startswith("efficiency"):
+            continue
+        rows.append(
+            {
+                "label": plain_label(comparison.metric),
+                "baseline": round(comparison.baseline.value, 2),
+                "candidate": round(comparison.candidate.value, 2),
+                "delta": round(comparison.delta.value, 2),
+                "verdict": ruling.verdict,
+            }
+        )
+    return rows
 
 
 def outcome_payload(outcomes: Sequence[TaskOutcome]) -> list[dict[str, Any]]:

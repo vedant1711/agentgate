@@ -6,6 +6,47 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### The landing page is now an evaluation console, not an article
+
+Feedback was that the demo read like a blog post with a slider — hard to judge the depth of the
+work from. A reader who evaluates AI systems is not convinced by prose; they are convinced by the
+artefacts the field actually produces. So the page now leads with those.
+
+**A live gate console.** Scenario tabs, a verdict badge, and a **forest plot** of every gated
+metric's effect size with 95% cluster-robust confidence intervals, a shaded tolerance band, and a
+dashed no-change reference. Beside it: paired tasks, independent units, metrics gated, blocking
+count, the correction method and alpha. Every value comes from the real engine.
+
+Chart decisions made deliberately rather than by default, and written down in the module:
+
+- **Forest plot** for per-metric effects, because the question is not "how big is each number" but
+  "which interval clears the band" — the reader's eye performs the test.
+- **Proportion-scale metrics only on that axis.** Token counts move in the hundreds and success
+  rates in hundredths; one axis for both needs a second scale, and a dual-scale chart is the
+  fastest way to make a rigorous plot mislead. Efficiency metrics get their own panel in their own
+  units, and the plot subtitle says how many were moved there.
+- **Dot plot with whiskers** for the model comparison, because the intervals are the finding; bars
+  would imply the point estimate is.
+- Palettes were run through a CVD validator rather than eyeballed, and every status colour ships
+  with a text label so colour is never the only channel.
+
+**A technique showcase with receipts.** 26 techniques across five groups — trajectory evaluation,
+τ²-bench, pass^k, controlled LLM-as-judge (position-swap, verbosity audits, family independence,
+κ floor, drift anchors), the statistics, OpenTelemetry/OpenInference/Phoenix, LiteLLM, DuckDB,
+RAGAS/DeepEval interop. Each names the module implementing it, and `tests/unit/test_stack.py`
+imports every one, so the page cannot claim a capability the codebase lacks.
+
+Also new: a hero metrics strip, an SVG pipeline diagram showing the two-speed record/decide split,
+a CLI section, and an engineering section.
+
+**A real bug the screenshots caught.** The console labelled `n_pairs` as "Clusters". On the
+crm_ops suite that is 70 paired tasks against 14 actual clusters — the published page was
+overstating the independent sample size fivefold, in exactly the anti-conservative direction this
+project exists to prevent. It now reports both, and says which one the tests ran on.
+
+Metric labels gained 22 entries so identifiers like `reliability.pass_hat_k` render as
+"succeeded on every attempt".
+
 ### Rebuilt the demo around a story instead of a slider
 
 The old landing page opened with a control labelled "margin δ" over a chart of per-cluster

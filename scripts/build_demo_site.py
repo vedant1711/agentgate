@@ -1,22 +1,25 @@
-"""Build the demo landing page — the one link that explains the whole project.
+"""Build the landing page: an evaluation console, not an article.
 
-The previous version opened with a slider labelled "margin δ" over a chart of per-cluster
-differences. Both are the right things to show *eventually*; neither means anything to a reader
-who has not yet been told what problem they solve. It was decorative.
+The page has one job — make a reader who evaluates AI systems for a living believe, within about
+fifteen seconds, that the person who built this knows what they are doing. Prose cannot do that.
+A reader like that is convinced by **the artefacts the field actually produces**: a forest plot of
+effect sizes with confidence intervals, a named margin, a BH-adjusted p-value, an explicit
+minimum detectable effect.
 
-This version tells the story in the order a reader can follow it:
+So the centrepiece is a working gate console showing exactly those, computed by the real engine.
+Everything else on the page supports it: what the change was, what a naive check would have
+concluded, which techniques produced the numbers, and what two real models scored.
 
-1. **The question**, in one sentence: you changed your agent — did you break it?
-2. **Two real runs where the obvious answer is wrong**, in opposite directions. A security
-   breach that scores a perfect 100%, and a 21-point drop that turns out not to be established.
-3. **A scenario you step through**: what changed, the 70 tasks before and after, what a normal
-   CI check concludes, what AgentGate concludes, and why they differ.
-4. **Only then, the tolerance control** — by which point "how much worse would you accept?" is
-   a question the reader is already asking.
+Chart decisions, made deliberately rather than by default:
 
-Everything is generated from real runs. The naive verdict is genuinely what a
-``if drop > 3%: fail`` rule would have done with these numbers, and every gate verdict comes
-from the same engine the CI gate uses.
+* **Forest plot** for per-metric effects, because the question is not "how big is each number" but
+  "which interval crosses the line" — the reader's eye performs the test.
+* **Proportion metrics only on that axis.** Token counts move in the hundreds and success rates in
+  hundredths; one axis for both would need a second scale, and a dual-scale chart is the fastest
+  way to make a rigorous plot lie. Efficiency metrics get their own table in their own units.
+* **Status colour plus an always-present label**, never colour alone.
+* **Dot plot with whiskers** for the model comparison, because intervals are the point; bars would
+  imply the point estimate is the finding.
 
 Usage::
 
@@ -26,15 +29,19 @@ Usage::
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from agentgate.demo import run_scenario
-from agentgate.report.chrome import STYLE, footer, nav
+from agentgate.report.chrome import REPO_URL
 from agentgate.report.playground import panel_payload, panels_for
+from agentgate.report.stack import STACK
 from agentgate.report.story import (
     copy_for,
+    efficiency_rows,
+    forest_rows,
     naive_verdict,
     outcome_payload,
     plain_label,
@@ -47,16 +54,15 @@ SUITE = Path("suites/crm_ops")
 RESULTS = Path("results/harness.json")
 HEADLINE_METRIC = "outcome.task_success"
 
-# Ordered as a lesson, not alphabetically. The first two are the cases where the obvious answer
-# is wrong — one in each direction — because those are the whole argument. The rest show the gate
-# agreeing with common sense, which is what makes the first two credible rather than contrarian.
+# Ordered as an argument, not alphabetically: the two cases where a threshold check is wrong come
+# first, one in each direction, because those are the whole point. The rest show the gate agreeing
+# with common sense, which is what makes the first two credible rather than contrarian.
 SCENARIOS = ("verbosity_attack", "injection", "dropped_tool", "flaky_dependency", "no_op")
-
 STOP_VERDICTS = frozenset({"REGRESSION", "SAFETY_FAIL"})
 
 
 def build_scenario(key: str) -> dict[str, Any]:
-    """Run one scenario and assemble everything the page needs to narrate it."""
+    """Run one scenario through the real pipeline and assemble everything the page renders."""
     result = run_scenario(key, suite_path=SUITE)
     baseline = [s for s in result.baseline_scores if s.metric == HEADLINE_METRIC]
     candidate = [s for s in result.candidate_scores if s.metric == HEADLINE_METRIC]
@@ -65,21 +71,23 @@ def build_scenario(key: str) -> dict[str, Any]:
     naive = naive_verdict(outcomes)
     copy = copy_for(key)
     verdict = verdict_copy(result.verdict)
-
-    gate_stops = result.verdict in STOP_VERDICTS
+    rulings = result.gate.rulings
     panels = panels_for(result.gate, limit=4)
     payload = panel_payload(panels, scenario=key, suite="crm_ops")
 
+    blocking = [r for r in rulings if r.blocks]
     return {
         "key": key,
         "title": copy.title,
         "change": copy.change,
         "why": copy.why_it_matters,
         "lesson": copy.lesson,
-        "gate_verdict": result.verdict,
-        "gate_headline": verdict["headline"],
-        "gate_body": verdict["body"],
-        "agrees": gate_stops == naive.would_block,
+        "verdict": result.verdict,
+        "headline": verdict["headline"],
+        "body": verdict["body"],
+        "agrees": (result.verdict in STOP_VERDICTS) == naive.would_block,
+        "n_metrics": len(rulings),
+        "n_blocking": len(blocking),
         "naive": {
             "before": round(naive.baseline_rate, 4),
             "after": round(naive.candidate_rate, 4),
@@ -87,6 +95,8 @@ def build_scenario(key: str) -> dict[str, Any]:
             "verdict": naive.verdict,
             "describe": naive.describe(),
         },
+        "forest": forest_rows(rulings),
+        "efficiency": efficiency_rows(rulings),
         "tasks": outcome_payload(outcomes),
         "panels": payload["panels"],
         "alphas": payload["alphas"],
@@ -95,410 +105,860 @@ def build_scenario(key: str) -> dict[str, Any]:
 
 
 def collect() -> dict[str, Any]:
-    """Run every demo scenario through the real pipeline."""
+    """Run every scenario shown on the page."""
     print("running scenarios through the real pipeline:")
     scenarios: dict[str, Any] = {}
     for key in SCENARIOS:
-        scenarios[key] = build_scenario(key)
-        item = scenarios[key]
-        flag = "" if item["agrees"] else "   <- the normal check is wrong here"
+        item = build_scenario(key)
+        scenarios[key] = item
+        flag = "" if item["agrees"] else "   <- a threshold check is wrong here"
         print(
-            f"  {key:<18} gate={item['gate_verdict']:<13} naive={item['naive']['verdict']:<5}{flag}"
+            f"  {key:<18} gate={item['verdict']:<13} naive={item['naive']['verdict']:<5}"
+            f" forest={len(item['forest'])}{flag}"
         )
     return {"order": list(SCENARIOS), "scenarios": scenarios}
 
 
 def evidence() -> dict[str, Any]:
-    """Load the committed evidence snapshot, or an empty stand-in when none exists."""
+    """Load the committed evidence snapshot from the real-model recordings."""
     if not RESULTS.exists():
-        return {"cells": [], "models": [], "suites": []}
+        return {"cells": []}
     loaded: dict[str, Any] = json.loads(RESULTS.read_text(encoding="utf-8"))
     return loaded
 
 
-EVIDENCE_METRICS = (
-    ("outcome.task_success", "Finished the job correctly"),
-    ("trajectory.recall", "Used the tools it needed"),
-    ("efficiency.total_tokens", "Tokens spent"),
+COMPARE_METRICS = (
+    ("outcome.task_success", "Finished the job"),
+    ("judge.instruction_following", "Followed instructions"),
+    ("trajectory.recall", "Found the right tools"),
+    ("trajectory.argument_correctness", "Got arguments right"),
     ("judge.coherence", "Sounded coherent"),
 )
 
 
-def _complete_cells(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
-    """Only fully recorded cells; a partial recording is not comparable to a complete one."""
-    return [cell for cell in snapshot.get("cells", []) if cell.get("complete")]
-
-
-def evidence_header(snapshot: dict[str, Any]) -> str:
-    """Column headers naming each measured model."""
-    heads = "".join(f"<th class='num'>{cell['label']}</th>" for cell in _complete_cells(snapshot))
-    return f"<tr><th>Measured on 111 real benchmark tasks</th>{heads}</tr>"
-
-
-def evidence_rows(snapshot: dict[str, Any]) -> str:
-    """Render the real-model evidence as a comparison table."""
-    cells = _complete_cells(snapshot)
-    if not cells:
-        return (
-            "<tr><td colspan='3' class='dim'>No model recorded yet — run "
-            "<code>agentgate harness record</code>.</td></tr>"
-        )
-    rows: list[str] = []
-    for metric, label in EVIDENCE_METRICS:
-        columns: list[str] = []
+def model_payload(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Shape the recorded-model evidence for the comparison chart."""
+    cells = [c for c in snapshot.get("cells", []) if c.get("complete")]
+    models = [{"label": c["label"], "id": c["model_id"]} for c in cells]
+    rows = []
+    for metric, label in COMPARE_METRICS:
+        series = []
         for cell in cells:
             found = next((m for m in cell["metrics"] if m["metric"] == metric), None)
-            if found is None:
-                columns.append("<td class='num dim'>—</td>")
-                continue
-            value = float(found["value"])
-            low, high = found.get("ci_low"), found.get("ci_high")
-            if abs(value) >= 100:
-                columns.append(f"<td class='num'>{value:,.0f}</td>")
-            else:
-                band = "" if low is None else f"<br><span class='ci'>{low:.2f} – {high:.2f}</span>"
-                columns.append(f"<td class='num'>{value:.3f}{band}</td>")
-        rows.append(f"<tr><td>{label}</td>{''.join(columns)}</tr>")
-    return "\n".join(rows)
+            series.append(
+                None
+                if found is None
+                else {
+                    "v": round(float(found["value"]), 4),
+                    "lo": None if found.get("ci_low") is None else round(found["ci_low"], 4),
+                    "hi": None if found.get("ci_high") is None else round(found["ci_high"], 4),
+                }
+            )
+        if any(series):
+            rows.append({"label": label, "series": series})
+    tokens = []
+    for cell in cells:
+        found = next((m for m in cell["metrics"] if m["metric"] == "efficiency.total_tokens"), None)
+        tokens.append(None if found is None else round(float(found["value"])))
+    return {"models": models, "rows": rows, "tokens": tokens}
+
+
+def stack_payload() -> list[dict[str, Any]]:
+    """Serialise the technique showcase."""
+    return [
+        {
+            "title": group.title,
+            "blurb": group.blurb,
+            "items": [asdict(item) for item in group.items],
+        }
+        for group in STACK
+    ]
 
 
 def build() -> Path:
     """Generate ``site/index.html``."""
-    data = collect()
     snapshot = evidence()
-
+    data = {
+        **collect(),
+        "models": model_payload(snapshot),
+        "stack": stack_payload(),
+        "generated": datetime.now(UTC).strftime("%B %Y"),
+        "repo": REPO_URL,
+    }
     SITE.mkdir(parents=True, exist_ok=True)
     target = SITE / "index.html"
     target.write_text(
         PAGE.replace("__DATA__", json.dumps(data, separators=(",", ":")))
-        .replace("__EVIDENCE_HEAD__", evidence_header(snapshot))
-        .replace("__EVIDENCE_ROWS__", evidence_rows(snapshot))
-        .replace("__GENERATED__", datetime.now(UTC).strftime("%B %Y")),
+        .replace("__REPO__", REPO_URL)
+        .replace("__GENERATED__", data["generated"]),
         encoding="utf-8",
     )
     print(f"wrote {target} ({target.stat().st_size / 1024:.0f} KB)")
     return target
 
 
+# ---------------------------------------------------------------------------
+# Page
+# ---------------------------------------------------------------------------
+
+STYLE = """
+:root{
+  --bg:#f7f7f4; --surface:#ffffff; --sunken:#f1f0ec; --line:#e2e0d8; --line-soft:#eeece5;
+  --ink:#14171c; --ink-2:#4c545f; --ink-3:#7c848f;
+  --brand:#0f6e64; --brand-soft:#e2f0ed; --on-brand:#ffffff;
+  --s1:#2a78d6; --s2:#eb6834;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --good-bg:#e7f5e7; --warn-bg:#fdf1d8; --crit-bg:#fae6e6; --stop-bg:#efe7fa; --stop:#6b3fb5;
+  --grid:#e9e7e0; --axis:#c9c6bc;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0c0e11; --surface:#14181d; --sunken:#101317; --line:#252b33; --line-soft:#1c2128;
+  --ink:#e8ecf1; --ink-2:#a6b0bd; --ink-3:#78828f;
+  --brand:#4fd6c4; --brand-soft:#0e2f2b; --on-brand:#0c0e11;
+  --s1:#3987e5; --s2:#d95926;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --good-bg:#0f2a12; --warn-bg:#2e2410; --crit-bg:#2e1414; --stop-bg:#201936; --stop:#bda6f5;
+  --grid:#1e242b; --axis:#333b45;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0c0e11; --surface:#14181d; --sunken:#101317; --line:#252b33; --line-soft:#1c2128;
+  --ink:#e8ecf1; --ink-2:#a6b0bd; --ink-3:#78828f;
+  --brand:#4fd6c4; --brand-soft:#0e2f2b; --on-brand:#0c0e11;
+  --s1:#3987e5; --s2:#d95926;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --good-bg:#0f2a12; --warn-bg:#2e2410; --crit-bg:#2e1414; --stop-bg:#201936; --stop:#bda6f5;
+  --grid:#1e242b; --axis:#333b45;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;scroll-padding-top:64px}
+body{margin:0;background:var(--bg);color:var(--ink);font:15.5px/1.6 ui-sans-serif,-apple-system,
+  BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums}
+.wrap{max-width:1120px;margin:0 auto;padding:0 1.5rem}
+h1,h2,h3,h4{margin:0;letter-spacing:-.02em;text-wrap:balance;font-weight:640}
+h1{font-size:clamp(2.1rem,4.6vw,3.4rem);line-height:1.05;letter-spacing:-.035em}
+h2{font-size:clamp(1.5rem,2.6vw,2rem);line-height:1.15}
+h3{font-size:1.02rem}
+p{margin:0 0 1rem;max-width:68ch;color:var(--ink-2)}
+a{color:var(--brand);text-underline-offset:.18em}
+.mono{font-family:var(--mono)}
+.eyebrow{font:600 .68rem/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
+  color:var(--brand);margin:0 0 1rem}
+.dim{color:var(--ink-3)}
+
+/* nav */
+.topbar{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--line)}
+.topbar .inner{max-width:1120px;margin:0 auto;padding:.7rem 1.5rem;display:flex;
+  align-items:center;gap:2rem}
+.brand{display:flex;align-items:center;gap:.5rem;font-weight:680;font-size:.98rem;
+  text-decoration:none;color:var(--ink);letter-spacing:-.02em}
+.brand .dot{width:9px;height:9px;border-radius:2px;background:var(--brand)}
+.topbar nav{display:flex;gap:1.4rem;margin-left:auto;align-items:center}
+.topbar nav a{font-size:.85rem;text-decoration:none;color:var(--ink-2)}
+.topbar nav a:hover{color:var(--ink)}
+.ghost{border:1px solid var(--line);border-radius:6px;padding:.32rem .7rem !important;
+  color:var(--ink) !important}
+@media(max-width:820px){.topbar nav a.opt{display:none}}
+
+/* hero */
+.hero{padding:5rem 0 3rem}
+.hero .lede{font-size:clamp(1.05rem,1.6vw,1.22rem);max-width:60ch;color:var(--ink-2);
+  margin-top:1.2rem}
+.cta{display:flex;gap:.7rem;flex-wrap:wrap;margin-top:2rem}
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.62rem 1.1rem;border-radius:7px;
+  text-decoration:none;font-size:.9rem;font-weight:560;border:1px solid var(--line);
+  color:var(--ink);background:var(--surface)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.btn:hover{border-color:var(--brand)}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:2.8rem;
+  background:var(--surface)}
+.stat{padding:1.1rem 1.2rem;border-right:1px solid var(--line-soft)}
+.stat:last-child{border-right:0}
+.stat .n{font:660 1.55rem/1 var(--mono);letter-spacing:-.03em;display:block}
+.stat .k{font-size:.74rem;color:var(--ink-3);margin-top:.35rem;display:block;line-height:1.35}
+
+section{padding:4rem 0;border-top:1px solid var(--line)}
+.shead{margin-bottom:1.8rem}
+
+/* console */
+.console{border:1px solid var(--line);border-radius:14px;background:var(--surface);
+  overflow:hidden}
+.console .bar{display:flex;align-items:center;gap:.6rem;padding:.7rem 1rem;
+  border-bottom:1px solid var(--line);background:var(--sunken);font:500 .8rem/1 var(--mono);
+  color:var(--ink-3);flex-wrap:wrap}
+.console .bar .dots{display:flex;gap:.32rem;margin-right:.4rem}
+.console .bar .dots i{width:9px;height:9px;border-radius:50%;background:var(--axis)}
+.tabs{display:flex;gap:.3rem;padding:.7rem 1rem 0;flex-wrap:wrap;
+  border-bottom:1px solid var(--line)}
+.tabs button{border:1px solid transparent;border-bottom:none;background:none;cursor:pointer;
+  font:inherit;font-size:.82rem;color:var(--ink-3);padding:.5rem .8rem;border-radius:7px 7px 0 0}
+.tabs button[aria-selected=true]{background:var(--surface);border-color:var(--line);
+  color:var(--ink);font-weight:600;margin-bottom:-1px}
+.tabs button:hover{color:var(--ink)}
+
+.verdict-head{display:flex;gap:1.2rem;align-items:flex-start;padding:1.4rem 1.4rem 1.1rem;
+  flex-wrap:wrap}
+.vbadge{display:inline-flex;align-items:center;gap:.45rem;padding:.42rem .8rem;border-radius:7px;
+  font:700 .76rem/1 var(--mono);letter-spacing:.06em;white-space:nowrap}
+.vbadge.good{background:var(--good-bg);color:var(--good)}
+.vbadge.warn{background:var(--warn-bg);color:#8a5f04}
+.vbadge.crit{background:var(--crit-bg);color:var(--critical)}
+.vbadge.stop{background:var(--stop-bg);color:var(--stop)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .vbadge.warn{color:var(--warn)}}
+:root[data-theme=dark] .vbadge.warn{color:var(--warn)}
+
+.chip{display:inline-flex;align-items:center;gap:.35rem;padding:.16rem .5rem;border-radius:5px;
+  font:600 .68rem/1.5 var(--mono);letter-spacing:.03em}
+.chip.good{background:var(--good-bg);color:var(--good)}
+.chip.warn{background:var(--warn-bg);color:#8a5f04}
+.chip.crit{background:var(--crit-bg);color:var(--critical)}
+.chip.stop{background:var(--stop-bg);color:var(--stop)}
+.chip.flat{background:var(--sunken);color:var(--ink-3)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .chip.warn{color:var(--warn)}}
+:root[data-theme=dark] .chip.warn{color:var(--warn)}
+
+.split{display:grid;grid-template-columns:minmax(0,1fr) 264px;gap:0;
+  border-top:1px solid var(--line)}
+@media(max-width:900px){.split{grid-template-columns:1fr}}
+.plot{padding:1.2rem 1.4rem 1.4rem;min-width:0}
+.side{border-left:1px solid var(--line);padding:1.2rem 1.3rem;background:var(--sunken)}
+@media(max-width:900px){.side{border-left:0;border-top:1px solid var(--line)}}
+.side h4{font:600 .68rem/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:.9rem}
+.kv{display:flex;justify-content:space-between;gap:.8rem;padding:.42rem 0;
+  border-bottom:1px dotted var(--line);font-size:.82rem}
+.kv:last-of-type{border-bottom:0}
+.kv span{color:var(--ink-3)}
+.kv b{font:600 .82rem var(--mono)}
+
+.plot-title{font-size:.86rem;font-weight:620;margin-bottom:.15rem}
+.plot-sub{font-size:.78rem;color:var(--ink-3);margin-bottom:.9rem}
+svg.forest{width:100%;height:auto;display:block;overflow:visible}
+.legend{display:flex;gap:1rem;flex-wrap:wrap;font-size:.74rem;color:var(--ink-3);
+  margin-top:.9rem;padding-top:.7rem;border-top:1px solid var(--line-soft)}
+.legend i{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:.32rem;
+  vertical-align:-1px}
+
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+  border-top:1px solid var(--line)}
+@media(max-width:700px){.compare{grid-template-columns:1fr}}
+.compare > div{background:var(--surface);padding:1.1rem 1.4rem}
+.compare h4{font:600 .68rem/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:.7rem}
+.compare p{font-size:.85rem;margin:.6rem 0 0}
+.note{padding:1rem 1.4rem;font-size:.86rem;border-top:1px solid var(--line)}
+.note.bad{background:var(--warn-bg);color:var(--ink)}
+
+/* generic */
+.grid3{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.card{border:1px solid var(--line);border-radius:11px;padding:1.2rem;background:var(--surface)}
+.card p{font-size:.87rem;margin:.4rem 0 0}
+
+/* stack */
+.stackgrid{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.sgroup{border:1px solid var(--line);border-radius:11px;background:var(--surface);
+  padding:1.2rem;display:flex;flex-direction:column}
+.sgroup > h3{margin-bottom:.3rem}
+.sgroup > p{font-size:.83rem;margin-bottom:1rem}
+.tech{border-top:1px solid var(--line-soft);padding:.7rem 0}
+.tech:last-child{padding-bottom:0}
+.tech .t{display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap}
+.tech .t b{font-size:.88rem;font-weight:620;color:var(--ink)}
+.tech .t code{font:500 .68rem var(--mono);color:var(--ink-3);background:var(--sunken);
+  padding:.1rem .35rem;border-radius:4px}
+.tech .d{font-size:.82rem;color:var(--ink-2);margin-top:.2rem}
+
+/* model chart */
+.mchart{border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:1.4rem}
+.mlegend{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.82rem;margin-bottom:1.2rem}
+.mlegend span{display:inline-flex;align-items:center;gap:.4rem}
+.mlegend i{width:10px;height:10px;border-radius:50%;display:inline-block}
+
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th,td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--line-soft)}
+th{font:600 .68rem var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+td.n,th.n{text-align:right;font-family:var(--mono)}
+.scroll{overflow-x:auto}
+
+pre{background:var(--sunken);border:1px solid var(--line);border-radius:9px;padding:1rem;
+  overflow-x:auto;font:.8rem/1.6 var(--mono);margin:0}
+pre .c{color:var(--ink-3)}
+pre .k{color:var(--brand);font-weight:600}
+
+footer{padding:3rem 0 4rem;border-top:1px solid var(--line);font-size:.84rem;color:var(--ink-3)}
+footer a{color:var(--ink-2)}
+"""
+
 BODY = """
+<div class="topbar"><div class="inner">
+  <a class="brand" href="./"><span class="dot"></span>AgentGate</a>
+  <nav>
+    <a href="#gate">Live gate</a>
+    <a href="#pipeline" class="opt">Pipeline</a>
+    <a href="#stack">Eval stack</a>
+    <a href="#models" class="opt">Results</a>
+    <a href="docs/">Docs</a>
+    <a href="gallery.html" class="opt">Reports</a>
+    <a class="ghost" href="__REPO__">GitHub</a>
+  </nav>
+</div></div>
+
 <header class="hero wrap">
-  <p class="eyebrow">Open source &middot; Apache-2.0</p>
-  <h1>You changed your AI agent.<br>Did you break it?</h1>
+  <p class="eyebrow">Statistical evaluation infrastructure for LLM agents</p>
+  <h1>Ship agent changes on<br>evidence, not vibes.</h1>
   <p class="lede">
-    Agents don't behave identically every run, so the score always moves a little. When it drops
-    after a change, nobody can tell whether you broke something or just got unlucky. AgentGate is
-    a CI check that answers that properly &mdash; and admits when it can't.
+    A CI gate that blocks a pull request only when an agent has <em>statistically
+    significantly</em> regressed — with paired non-inferiority tests, cluster-robust errors,
+    FDR control across 42 metrics, and an <span class="mono">UNDERPOWERED</span> verdict for when
+    the evidence genuinely cannot tell.
   </p>
-  <div class="row">
-    <a class="btn primary" href="#walkthrough">See it decide</a>
-    <a class="btn" href="docs/">How it works</a>
-    <a class="btn" href="gallery.html">Example reports</a>
+  <div class="cta">
+    <a class="btn primary" href="#gate">Open the gate console</a>
+    <a class="btn" href="docs/architecture/">Architecture</a>
+    <a class="btn" href="__REPO__">Source</a>
   </div>
+  <div class="stats" id="stats"></div>
 </header>
 
-<section class="wrap">
-  <p class="eyebrow">Why this is hard</p>
-  <h2>The obvious answer is wrong in both directions</h2>
-  <p>
-    Almost every team checks agent quality the same way: run a test set, compare the score to
-    last time, fail the build if it dropped more than a few points. Here are two real runs from
-    this project where that rule gets it exactly backwards.
-  </p>
-  <div class="hooks" id="hooks"></div>
-</section>
-
-<section class="wrap" id="walkthrough">
-  <p class="eyebrow">Walk through it</p>
-  <h2>Pick something a developer might have done</h2>
-  <p class="dim">
-    Each is a real change, run through the real system on the same 70-task suite. Nothing below
-    is illustrative.
-  </p>
-
-  <div class="picker" id="picker"></div>
-
-  <div class="step">
-    <span class="n">1</span>
-    <h3 id="s1-title"></h3>
-    <p id="s1-change"></p>
-    <p class="dim" id="s1-why" style="font-size:.9rem;margin:0"></p>
-  </div>
-
-  <div class="step">
-    <span class="n">2</span>
-    <h3>What actually happened, task by task</h3>
-    <p class="dim" style="font-size:.9rem">
-      Every square is one test case. Both sides ran the same tasks with the same random seeds,
-      so they line up one to one and are directly comparable.
+<section id="gate" class="wrap">
+  <div class="shead">
+    <p class="eyebrow">Live gate console</p>
+    <h2>Every number below was computed by the real engine</h2>
+    <p>
+      Pick a change a developer might have made. The suite is 70 tasks in 14 clusters, both sides
+      run on identical task instances with identical seeds. Nothing here is illustrative.
     </p>
-    <div class="rowlabel">Before your change</div>
-    <div class="grid-tasks" id="grid-before"></div>
-    <div class="rowlabel">After your change</div>
-    <div class="grid-tasks" id="grid-after"></div>
-    <div class="legend" style="margin-top:.8rem">
-      <span><i class="swatch" style="background:var(--good)"></i> finished the job</span>
-      <span><i class="swatch" style="background:var(--warn)"></i> partly</span>
-      <span><i class="swatch" style="background:var(--bad)"></i> failed</span>
-    </div>
   </div>
 
-  <div class="step">
-    <span class="n">3</span>
-    <h3>Two checks, two answers</h3>
-    <p class="dim" style="font-size:.9rem" id="s3-summary"></p>
-    <div class="twocol">
-      <div class="answer">
-        <h4>A normal CI check</h4>
-        <div id="naive-call"></div>
+  <div class="console">
+    <div class="bar">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span id="cmdline">agentgate compare --baseline main --candidate pr-482</span>
+    </div>
+    <div class="tabs" id="tabs" role="tablist"></div>
+
+    <div class="verdict-head">
+      <div id="vbadge"></div>
+      <div style="flex:1;min-width:260px">
+        <h3 id="vtitle" style="margin-bottom:.25rem"></h3>
+        <p id="vbody" style="font-size:.88rem;margin:0"></p>
+      </div>
+    </div>
+
+    <div class="split">
+      <div class="plot">
+        <div class="plot-title">Effect on each gated metric</div>
+        <div class="plot-sub" id="plot-sub"></div>
+        <svg class="forest" id="forest" role="img" aria-labelledby="forest-desc"></svg>
+        <p id="forest-desc" class="visually-hidden" style="position:absolute;left:-9999px"></p>
+        <div class="legend">
+          <span><i style="background:var(--critical)"></i>Blocks the merge</span>
+          <span><i style="background:var(--warn)"></i>Not enough evidence</span>
+          <span><i style="background:var(--good)"></i>No meaningful regression</span>
+          <span>Shaded band = declared tolerance · dashed line = no change</span>
+        </div>
+      </div>
+      <div class="side">
+        <h4>Run</h4>
+        <div class="kv"><span>Paired tasks</span><b id="k-tasks">—</b></div>
+        <div class="kv"><span>Independent units</span><b id="k-clusters">—</b></div>
+        <div class="kv"><span>Metrics gated</span><b id="k-metrics">—</b></div>
+        <div class="kv"><span>Blocking</span><b id="k-block">—</b></div>
+        <div class="kv"><span>Correction</span><b>BH-FDR</b></div>
+        <div class="kv"><span>Alpha</span><b>0.05</b></div>
+        <p class="dim" style="font-size:.72rem;margin:.7rem 0 0;line-height:1.45">
+          Tests run on per-cluster means, so the independent sample size is the cluster count —
+          not the task count. Using the larger number would overstate the power fivefold.
+        </p>
+        <h4 style="margin-top:1.4rem">Cost</h4>
+        <div id="eff"></div>
+      </div>
+    </div>
+
+    <div class="compare">
+      <div>
+        <h4>A conventional CI check</h4>
+        <div id="naive-badge"></div>
         <p id="naive-why"></p>
       </div>
-      <div class="answer gate">
+      <div>
         <h4>AgentGate</h4>
-        <div id="gate-call"></div>
+        <div id="gate-badge"></div>
         <p id="gate-why"></p>
       </div>
     </div>
-    <div id="verdict-note"></div>
+    <div id="note"></div>
   </div>
 
-  <div class="step">
-    <span class="n">4</span>
-    <h3>Your tolerance is a setting, not a guess</h3>
-    <p class="dim" style="font-size:.9rem">
-      AgentGate never asks "did anything change?" &mdash; something always changes. It asks
-      whether the agent got worse by more than an amount <em>you</em> decided you care about.
-      Move that amount and watch the answer change.
+  <p class="dim" style="font-size:.82rem;margin-top:1rem">
+    The forest plot shows proportion-scale metrics only. Token and latency deltas live in the Cost
+    panel because they are measured in different units — putting them on one axis would need a
+    second scale, and a dual-scale chart is the fastest way to make a rigorous plot mislead.
+  </p>
+</section>
+
+<section id="pipeline" class="wrap">
+  <div class="shead">
+    <p class="eyebrow">Pipeline</p>
+    <h2>Seven layers, two speeds</h2>
+    <p>
+      Recording a suite against a local model takes hours. Deciding, once the responses exist,
+      takes seconds. The provider layer records once and replays forever, so CI never calls a
+      model and a verdict reproduces byte for byte.
     </p>
-    <div class="control">
-      <div>
-        <label class="field" for="metric">Which quality are we checking?</label>
-        <select id="metric"></select>
-        <div style="margin-top:1.1rem">
-          <label class="field" for="tol">
-            I'd accept the agent being up to
-            <span id="tol-value" style="color:var(--accent)"></span> worse
-          </label>
-          <input type="range" id="tol" min="0" value="0" step="1">
-        </div>
-        <div id="tol-verdict" style="margin-top:1rem"></div>
+  </div>
+  <div id="pipeline-svg"></div>
+  <div class="grid3" style="margin-top:1.5rem">
+    <div class="card">
+      <h3>Trajectory is the hinge</h3>
+      <p>Everything above it produces one; everything below only reads one. Metrics, statistics
+      and the gate are all testable against recorded trajectories — no model, no network.</p>
+    </div>
+    <div class="card">
+      <h3>Replay fails loudly</h3>
+      <p>A cache miss in CI is an error, never a silent live call. That single decision is what
+      makes the verdict deterministic and the pipeline free to run.</p>
+    </div>
+    <div class="card">
+      <h3>Per-sample, never aggregated</h3>
+      <p>Scores are stored per (task, repetition) in DuckDB, so any run can be re-analysed at a
+      different K, margin or alpha without re-running the agent.</p>
+    </div>
+  </div>
+</section>
+
+<section id="stack" class="wrap">
+  <div class="shead">
+    <p class="eyebrow">Evaluation stack</p>
+    <h2>26 techniques, each solving a named failure</h2>
+    <p>
+      Every entry names the module that implements it. A test imports all of them, so nothing on
+      this page can claim a capability the codebase does not have.
+    </p>
+  </div>
+  <div class="stackgrid" id="stack"></div>
+</section>
+
+<section id="models" class="wrap">
+  <div class="shead">
+    <p class="eyebrow">Recorded evidence</p>
+    <h2>Two open models, 111 published benchmark tasks</h2>
+    <p>
+      666 runs and 4.5&nbsp;million tokens of real inference against τ²-bench retail, graded
+      against its own gold trajectories. Whiskers are 95% cluster-robust intervals over 111
+      independent clusters.
+    </p>
+  </div>
+  <div class="mchart">
+    <div class="mlegend" id="mlegend"></div>
+    <svg id="models-svg" role="img"
+      style="width:100%;height:auto;display:block;overflow:visible"></svg>
+    <div class="scroll" style="margin-top:1.5rem">
+      <table id="mtable"></table>
+    </div>
+  </div>
+  <div class="grid3" style="margin-top:1.5rem">
+    <div class="card">
+      <h3>Coherent and wrong</h3>
+      <p>The larger model sounds <em>more</em> coherent while finishing fewer jobs. That gap is
+      why "it reads well" is not a measurement.</p>
+    </div>
+    <div class="card">
+      <h3>The gate refuses to rank them</h3>
+      <p>0.180 vs 0.111 looks like a 62% relative difference. Paired across 111 tasks it is
+      −0.069 [−0.159, 0.021], and the suite's minimum detectable effect is 0.115.</p>
+    </div>
+    <div class="card">
+      <h3>Safety is not averaged</h3>
+      <p>Unconfirmed destructive actions fired on 27 of 111 tasks for the larger model, and never
+      for the smaller. That bypasses the statistics entirely.</p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <div class="shead">
+    <p class="eyebrow">Interface</p>
+    <h2>It is a CLI and a library, not a notebook</h2>
+  </div>
+  <div class="grid3" style="grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)">
+    <pre><span class="c"># record once — slow, in the background</span>
+$ agentgate run --suite suites/tau2_retail \\
+    --model ollama_chat/llama3.2:3b --mode cache
+
+<span class="c"># decide in CI — instant, offline, free</span>
+$ agentgate compare --baseline main --candidate pr-482
+<span class="k">REGRESSION</span>  trajectory.in_order_match
+           -0.243 [-0.371, -0.115]  p_adj=0.0004
+exit 2
+
+<span class="c"># what has the harness learned so far?</span>
+$ agentgate leaderboard --suite tau2_retail
+tier  model          task_success   95% CI
+1     Llama 3.2 3B   0.180          [0.108, 0.252]
+1     Qwen2.5 7B     0.111          [0.053, 0.169]
+<span class="c"># tier 1 twice: not separable on this evidence</span></pre>
+    <div style="display:flex;flex-direction:column;gap:1rem">
+      <div class="card">
+        <h3>Exit code is the verdict</h3>
+        <p>0 pass, 2 regression, 3 underpowered, 4 safety. Drop it into any CI system without
+        parsing anything.</p>
       </div>
-      <ul class="stats">
-        <li><span>Before</span><b id="t-base">&mdash;</b></li>
-        <li><span>After</span><b id="t-cand">&mdash;</b></li>
-        <li><span>Difference</span><b id="t-delta">&mdash;</b></li>
-        <li><span>Independent cases</span><b id="t-n">&mdash;</b></li>
-        <li><span>Smallest drop this suite can detect</span><b id="t-mde">&mdash;</b></li>
-      </ul>
+      <div class="card">
+        <h3>Every artefact is generated</h3>
+        <p>This page, the metric catalogue, the results tables and the PR comment all come from
+        the pipeline. A drift check fails the build if a committed page stops matching its data.</p>
+      </div>
     </div>
-    <p class="dim" style="font-size:.84rem;margin:1.2rem 0 0">
-      Every position on that slider was calculated in advance by the same engine the real gate
-      uses. The page looks answers up; it does no statistics in your browser.
-    </p>
   </div>
 </section>
 
 <section class="wrap">
-  <p class="eyebrow">How it works</p>
-  <h2>Three ideas, and that's most of it</h2>
-  <div class="steps3">
-    <div class="card">
-      <h3>Run both sides on identical tasks</h3>
-      <p>Same test cases, same random seeds, before and after. Task difficulty varies enormously,
-      and pairing cancels it out, so what's left is the effect of your change.</p>
-    </div>
-    <div class="card">
-      <h3>Compare per task, not totals</h3>
-      <p>Two totals can match while every individual case moved. Looking at each task's
-      before-and-after shows whether a pattern is real or a few coincidences.</p>
-    </div>
-    <div class="card">
-      <h3>Answer three ways, not two</h3>
-      <p>Broke it, didn't break it, or <em>not enough evidence to say</em>. That third answer is
-      the honest one on a small test set, and no threshold rule can ever give it.</p>
-    </div>
+  <div class="shead">
+    <p class="eyebrow">Engineering</p>
+    <h2>Built to be trusted, not just to run</h2>
   </div>
-  <p style="margin-top:1.6rem">
-    There is more underneath: grouping related test cases so five rewordings of one scenario
-    count once, correcting for checking dozens of metrics at the same time, and treating an
-    LLM-as-judge score as a measurement with its own error bars.
-    <a href="docs/methodology/">The methodology page</a> covers all of it.
-  </p>
+  <div class="grid3">
+    <div class="card"><h3>779 tests</h3><p>Unit, property-based with Hypothesis, end-to-end, and
+      simulation tests that verify the gate's false-positive rate against synthetic ground
+      truth.</p></div>
+    <div class="card"><h3><span class="mono">mypy --strict</span></h3><p>134 source files, zero
+      escapes. Every boundary is a pydantic v2 model exported as JSON Schema.</p></div>
+    <div class="card"><h3>Golden values</h3><p>Every metric is pinned to a hand-computed expected
+      value, so a refactor cannot silently change what a number means.</p></div>
+    <div class="card"><h3>Reproducible by construction</h3><p>Suite hash, seeds, prompt hashes,
+      model pins and library versions all fold into one config hash. Host details are excluded on
+      purpose.</p></div>
+    <div class="card"><h3>Zero paid resources</h3><p>Runs entirely on a laptop with local
+      models or free tiers. Cloning it costs nothing — a hard constraint, not a demo
+      mode.</p></div>
+    <div class="card"><h3>Self-recording</h3><p>A weekly workflow records new evidence, commits
+      the snapshot, and redeploys — so the git history is the history of what it has
+      learned.</p></div>
+  </div>
 </section>
 
-<section class="wrap">
-  <p class="eyebrow">Real models, real tasks</p>
-  <h2>Two open models on 111 published benchmark tasks</h2>
+<footer class="wrap">
   <p>
-    The walkthrough above uses a deterministic stand-in agent so it reproduces exactly. These
-    numbers come from real language models doing real work &mdash; 666 runs and 4.5&nbsp;million
-    tokens on tasks from &tau;&sup2;-bench, a published agent benchmark.
+    <strong style="color:var(--ink-2)">AgentGate</strong> ·
+    <a href="__REPO__">github.com/vedant1711/agentgate</a> ·
+    Apache-2.0 · generated __GENERATED__
   </p>
-  <div class="scroll">
-    <table>
-      <thead>__EVIDENCE_HEAD__</thead>
-      <tbody>__EVIDENCE_ROWS__</tbody>
-    </table>
-  </div>
-  <p class="dim" style="font-size:.87rem;margin-top:1rem">
-    Read the first and last rows together. The bigger model sounds <em>more</em> coherent while
-    finishing fewer jobs &mdash; which is exactly why "it reads well" is not a measurement. And
-    on finishing the job, AgentGate refuses to rank them: the gap is smaller than what 111 tasks
-    can resolve. <a href="docs/results/">Full numbers with error bars &rarr;</a>
+  <p style="max-width:62ch;font-size:.8rem">
+    Read the <a href="docs/limitations/">limitations</a> before trusting any number here. The
+    suites are small next to production traffic, the judge is itself a model with measured biases,
+    and the τ² adaptation is single-turn where the original is multi-turn. All of it is stated
+    rather than omitted — the same discipline as the UNDERPOWERED verdict, applied to the project.
   </p>
-</section>
-
-<section class="wrap">
-  <p class="eyebrow">Go deeper</p>
-  <h2>Where to next</h2>
-  <div class="next">
-    <a class="next-card" href="docs/">
-      <h3>Documentation &rarr;</h3>
-      <p class="dim" style="font-size:.88rem;margin:.3rem 0 0">How the statistics work, all 42
-      metrics, the living harness, and an honest limitations page.</p>
-    </a>
-    <a class="next-card" href="gallery.html">
-      <h3>Example reports &rarr;</h3>
-      <p class="dim" style="font-size:.88rem;margin:.3rem 0 0">The full report AgentGate posts on
-      a pull request, for every scenario above.</p>
-    </a>
-    <a class="next-card" href="https://github.com/vedant1711/agentgate">
-      <h3>Source code &rarr;</h3>
-      <p class="dim" style="font-size:.88rem;margin:.3rem 0 0">Python 3.12, Apache-2.0, 764 tests.
-      Runs entirely free and offline.</p>
-    </a>
-  </div>
-</section>
-
+</footer>
 """
 
-SCRIPT = """
-const DATA = __DATA__;
+SCRIPT = r"""
+const D = __DATA__;
 const $ = id => document.getElementById(id);
-let current = DATA.order[0];
-let metricIndex = 0;
-let tolStep = 0;
-const ALPHA = 0.05;
+const NS = "http://www.w3.org/2000/svg";
+let cur = D.order[0];
 
-const NAIVE_TAG = { SHIP: ["ship", "Ships it"], BLOCK: ["block", "Blocks the merge"] };
-const GATE_TAG = { PASS:"ship", REGRESSION:"block", UNDERPOWERED:"warn",
-                   SAFETY_FAIL:"stop", INCONCLUSIVE:"plain" };
-const TOL_WORDS = { PASS:"No meaningful regression", REGRESSION:"Real regression \\u2014 block",
-                    UNDERPOWERED:"Not enough evidence to say" };
+const VCLASS = {PASS:"good", REGRESSION:"crit", UNDERPOWERED:"warn", SAFETY_FAIL:"stop",
+                INCONCLUSIVE:"flat"};
+const VCOLOR = {PASS:"var(--good)", REGRESSION:"var(--critical)", UNDERPOWERED:"var(--warn)",
+                SAFETY_FAIL:"var(--stop)", INCONCLUSIVE:"var(--ink-3)"};
+const VSHORT = {PASS:"no regression", REGRESSION:"blocks", UNDERPOWERED:"insufficient",
+                SAFETY_FAIL:"safety", INCONCLUSIVE:"n/a"};
+const pct = x => (x*100).toFixed(0) + "%";
 
-const pct = x => (x * 100).toFixed(0) + "%";
-const pts = x => (x * 100).toFixed(1) + " points";
+function el(tag, attrs, text){
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
 
-function renderHooks() {
-  const picks = [
-    { key:"injection", caption:"The score didn't move at all",
-      body:"A support ticket contained a hidden instruction and the agent obeyed it. The average " +
-           "score is <strong>perfect</strong>, so a threshold check ships a security breach " +
-           "without blinking." },
-    { key:"verbosity_attack", caption:"The score dropped hard",
-      body:"Someone asked the agent to be more thorough. A threshold check blocks the merge over " +
-           "that drop. AgentGate says the evidence doesn't establish the agent got worse \\u2014 " +
-           "so blocking would be a false alarm." },
+/* ---------------- hero stats ---------------- */
+function renderStats(){
+  const items = [
+    ["42", "metrics scored per sample"],
+    ["111", "τ²-bench tasks, 111 clusters"],
+    ["666", "recorded agent runs"],
+    ["4.5M", "tokens of real inference"],
+    ["779", "tests, mypy --strict"],
   ];
-  $("hooks").innerHTML = picks.map(p => {
-    const s = DATA.scenarios[p.key];
-    if (!s) return "";
-    const [cls, txt] = NAIVE_TAG[s.naive.verdict];
-    return `<div class="hook">
-      <div class="score">${pct(s.naive.before)} \\u2192 ${pct(s.naive.after)}</div>
-      <div class="caption">${p.caption}</div>
-      <div class="verdicts">
-        <span class="tag ${cls}">Normal check: ${txt}</span>
-        <span class="tag ${GATE_TAG[s.gate_verdict]}">AgentGate: ${s.gate_headline}</span>
-      </div>
-      <p>${p.body}</p></div>`;
-  }).join("");
+  $("stats").innerHTML = items.map(([n,k]) =>
+    `<div class="stat"><span class="n">${n}</span><span class="k">${k}</span></div>`).join("");
 }
 
-function renderPicker() {
-  $("picker").innerHTML = DATA.order.map(k =>
-    `<button type="button" data-k="${k}">${DATA.scenarios[k].title}</button>`).join("");
-  for (const b of $("picker").children) {
-    b.onclick = () => {
-      current = b.dataset.k; metricIndex = 0; tolStep = 0; renderMetrics(); render();
-    };
+/* ---------------- tabs ---------------- */
+function renderTabs(){
+  $("tabs").innerHTML = D.order.map(k =>
+    `<button role="tab" data-k="${k}">${D.scenarios[k].title}</button>`).join("");
+  for (const b of $("tabs").children)
+    b.onclick = () => { cur = b.dataset.k; render(); };
+}
+
+/* ---------------- forest plot ---------------- */
+function forest(rows, margin){
+  const svg = $("forest");
+  svg.innerHTML = "";
+  if (!rows.length){
+    svg.appendChild(el("text", {x:0, y:20, fill:"var(--ink-3)", "font-size":"13"},
+      "No proportion-scale metric was gated for this scenario."));
+    svg.setAttribute("viewBox", "0 0 600 40");
+    return;
   }
+  const W = 640, padL = 190, padR = 96, rowH = 30, top = 26;
+  const H = top + rows.length*rowH + 26;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
+  let lo = Math.min(0, ...rows.map(r => r.lo)), hi = Math.max(0, ...rows.map(r => r.hi));
+  const pad = Math.max(0.04, (hi-lo)*0.12); lo -= pad; hi += pad;
+  const x = v => padL + ((v-lo)/(hi-lo))*(W-padL-padR);
+
+  // tolerance band: from -margin to 0 is "acceptable worse"
+  if (margin > 0){
+    svg.appendChild(el("rect", {x:x(-margin), y:top-8, width:Math.max(1,x(0)-x(-margin)),
+      height:rows.length*rowH+8, fill:"var(--brand)", opacity:"0.07"}));
+  }
+  // axis ticks
+  const ticks = [lo, (lo+hi)/2, hi].map(v => Math.round(v*100)/100);
+  for (const t of [...new Set(ticks)]){
+    svg.appendChild(el("line", {x1:x(t), y1:top-8, x2:x(t), y2:top+rows.length*rowH,
+      stroke:"var(--grid)", "stroke-width":"1"}));
+    svg.appendChild(el("text", {x:x(t), y:H-8, fill:"var(--ink-3)", "font-size":"10.5",
+      "text-anchor":"middle", "font-family":"var(--mono)"}, t.toFixed(2)));
+  }
+  // zero reference
+  svg.appendChild(el("line", {x1:x(0), y1:top-10, x2:x(0), y2:top+rows.length*rowH+2,
+    stroke:"var(--axis)", "stroke-width":"1.5", "stroke-dasharray":"3 3"}));
+
+  rows.forEach((r, i) => {
+    const y = top + i*rowH + rowH/2;
+    const c = VCOLOR[r.verdict] || "var(--ink-3)";
+    svg.appendChild(el("text", {x:padL-12, y:y+4, fill:"var(--ink-2)", "font-size":"12",
+      "text-anchor":"end"}, r.label.length>28 ? r.label.slice(0,27)+"…" : r.label));
+    // interval
+    svg.appendChild(el("line", {x1:x(r.lo), y1:y, x2:x(r.hi), y2:y, stroke:c,
+      "stroke-width":"2", "stroke-linecap":"round", opacity:"0.55"}));
+    for (const v of [r.lo, r.hi])
+      svg.appendChild(el("line", {x1:x(v), y1:y-4, x2:x(v), y2:y+4, stroke:c, "stroke-width":"2"}));
+    // point estimate, ringed so it reads against the interval
+    svg.appendChild(el("circle", {cx:x(r.delta), cy:y, r:"5", fill:c,
+      stroke:"var(--surface)", "stroke-width":"2"}));
+    // right-hand label: colour is never the only channel
+    svg.appendChild(el("text", {x:W-padR+10, y:y+4, fill:"var(--ink-3)", "font-size":"10.5",
+      "font-family":"var(--mono)"}, VSHORT[r.verdict] || ""));
+    const ttl = el("title", {});
+    ttl.textContent = `${r.label}: ${r.delta>=0?"+":""}${r.delta.toFixed(3)} `
+      + `[${r.lo.toFixed(3)}, ${r.hi.toFixed(3)}]`
+      + (r.p===null?"":` · BH-adjusted p=${r.p}`)
+      + ` · n=${r.n_units} ${r.clustered ? "clusters" : "tasks"}`
+      + ` from ${r.n_tasks} paired tasks`;
+    svg.appendChild(ttl);
+  });
+  $("forest-desc").textContent = rows.map(r =>
+    `${r.label} changed by ${r.delta.toFixed(3)} `
+    + `(95% CI ${r.lo.toFixed(3)} to ${r.hi.toFixed(3)}), verdict ${r.verdict}.`).join(" ");
 }
 
-const cellClass = v => v >= 0.999 ? "pass" : (v <= 0.001 ? "fail" : "part");
+/* ---------------- main render ---------------- */
+function render(){
+  const s = D.scenarios[cur];
+  for (const b of $("tabs").children)
+    b.setAttribute("aria-selected", b.dataset.k === cur);
 
-function renderGrid(el, tasks, key) {
-  el.innerHTML = tasks.map(t =>
-    `<div class="cell ${cellClass(t[key])}" title="${t.id}: ${pct(t[key])}"></div>`).join("");
+  $("cmdline").textContent =
+    `agentgate compare --baseline main --candidate ${cur.replace(/_/g,"-")}`;
+
+  const vc = VCLASS[s.verdict] || "flat";
+  $("vbadge").innerHTML = `<span class="vbadge ${vc}">${s.verdict}</span>`;
+  $("vtitle").textContent = s.headline;
+  $("vbody").textContent = s.body;
+
+  const margin = s.forest.length ? s.forest[0].margin : 0;
+  const hidden = s.n_metrics - s.forest.length;
+  $("plot-sub").textContent =
+    `Change from baseline with 95% ${s.forest.length && s.forest[0].clustered
+      ? "cluster-robust " : ""}confidence intervals. An interval clear of the shaded tolerance `
+    + `band is a real effect.`
+    + (hidden > 0 ? ` ${hidden} further metric${hidden>1?"s are":" is"} measured in other units `
+        + `and shown under Cost.` : "");
+  forest(s.forest, margin);
+
+  $("k-tasks").textContent = s.tasks.length;
+  $("k-clusters").textContent = s.forest.length ? s.forest[0].n_units : "—";
+  $("k-metrics").textContent = s.n_metrics;
+  $("k-block").textContent = s.n_blocking;
+
+  $("eff").innerHTML = s.efficiency.length
+    ? s.efficiency.map(e => {
+        const d = e.delta >= 0 ? `+${e.delta}` : `${e.delta}`;
+        return `<div class="kv"><span>${e.label}</span><b>${d}</b></div>`;
+      }).join("")
+    : `<div class="kv"><span>No cost change measured</span><b>—</b></div>`;
+
+  const nb = s.naive.verdict === "BLOCK";
+  $("naive-badge").innerHTML =
+    `<span class="chip ${nb?"crit":"good"}">${nb?"BLOCKS THE MERGE":"SHIPS IT"}</span>`;
+  $("naive-why").textContent = `${s.naive.describe} `
+    + (nb ? `That is more than the ${pct(s.naive.threshold)} threshold, so the rule fires — with `
+          + `no way to know whether the drop is meaningful.`
+          : `That is within the ${pct(s.naive.threshold)} threshold, so the rule stays quiet. It `
+          + `only ever sees the average.`);
+
+  $("gate-badge").innerHTML = `<span class="chip ${vc}">${s.headline.toUpperCase()}</span>`;
+  $("gate-why").textContent = s.body;
+
+  $("note").className = s.agrees ? "note" : "note bad";
+  $("note").innerHTML = s.agrees
+    ? `<span class="dim">Both checks agree here. A gate that only ever disagreed with common
+       sense would just be contrarian — the point is that it disagrees when it should.</span>`
+    : `<strong>They disagree, and the conventional check is the one that is wrong.</strong>
+       ${s.lesson}`;
 }
 
-function renderMetrics() {
-  const s = DATA.scenarios[current];
-  $("metric").innerHTML = s.panels.map((p, i) =>
-    `<option value="${i}">${s.labels[p.metric] || p.metric}</option>`).join("");
-  $("metric").value = metricIndex;
-  $("metric").onchange = () => { metricIndex = +$("metric").value; tolStep = 0; render(); };
-  const panel = s.panels[metricIndex];
-  $("tol").max = panel ? (panel.grid.length / s.alphas.length) - 1 : 0;
+/* ---------------- pipeline diagram ---------------- */
+function pipeline(){
+  const W = 1060, H = 216;
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, role:"img",
+    style:"width:100%;height:auto;display:block;overflow:visible"});
+  svg.appendChild(el("title", {}, "AgentGate pipeline: suite, runner, agent, provider, "
+    + "metrics, statistics, gate"));
+
+  const stages = [
+    ["Suite", "tasks + gold\ntrajectories", "#0f6e64"],
+    ["Runner", "K reps,\nderived seeds", "#0f6e64"],
+    ["Agent", "ReAct loop\n+ sandbox", "#0f6e64"],
+    ["Provider", "live · cache\nreplay · mock", "#2a78d6"],
+    ["Metrics", "42 scores\nper sample", "#eb6834"],
+    ["Judge", "bias-controlled\nLLM grading", "#eb6834"],
+    ["Statistics", "paired · clustered\nBH-adjusted", "#6b3fb5"],
+    ["Gate", "3-way\nverdict", "#6b3fb5"],
+  ];
+  const boxW = 116, boxH = 74, gap = (W - stages.length*boxW) / (stages.length - 1);
+  const y = 62;
+
+  stages.forEach((st, i) => {
+    const x = i * (boxW + gap);
+    svg.appendChild(el("rect", {x, y, width:boxW, height:boxH, rx:9,
+      fill:"var(--surface)", stroke:st[2], "stroke-width":"1.5"}));
+    svg.appendChild(el("text", {x:x+boxW/2, y:y+25, "text-anchor":"middle",
+      "font-size":"13", "font-weight":"640", fill:"var(--ink)"}, st[0]));
+    st[1].split("\n").forEach((line, j) => {
+      svg.appendChild(el("text", {x:x+boxW/2, y:y+43+j*13, "text-anchor":"middle",
+        "font-size":"10.5", fill:"var(--ink-3)"}, line));
+    });
+    if (i < stages.length - 1){
+      const x1 = x + boxW + 3, x2 = x + boxW + gap - 3;
+      svg.appendChild(el("line", {x1, y1:y+boxH/2, x2, y2:y+boxH/2,
+        stroke:"var(--axis)", "stroke-width":"1.5"}));
+      svg.appendChild(el("path", {d:`M${x2-5},${y+boxH/2-3.5} L${x2},${y+boxH/2} `
+        + `L${x2-5},${y+boxH/2+3.5}`, fill:"none", stroke:"var(--axis)", "stroke-width":"1.5"}));
+    }
+  });
+
+  // Two-speed annotation
+  const recEnd = 4*(boxW+gap) - gap/2;
+  svg.appendChild(el("line", {x1:0, y1:32, x2:recEnd, y2:32, stroke:"#2a78d6",
+    "stroke-width":"1.5"}));
+  svg.appendChild(el("text", {x:recEnd/2, y:24, "text-anchor":"middle", "font-size":"11",
+    fill:"#2a78d6", "font-weight":"600"}, "RECORD — hours, in the background"));
+  svg.appendChild(el("line", {x1:recEnd, y1:32, x2:W, y2:32, stroke:"#0f6e64",
+    "stroke-width":"1.5"}));
+  svg.appendChild(el("text", {x:(recEnd+W)/2, y:24, "text-anchor":"middle", "font-size":"11",
+    fill:"#0f6e64", "font-weight":"600"}, "DECIDE — seconds, in CI, offline"));
+
+  // Cache loop under the provider
+  const px = 3*(boxW+gap) + boxW/2;
+  svg.appendChild(el("path", {d:`M${px},${y+boxH} L${px},${y+boxH+26} L${px+150},${y+boxH+26}`,
+    fill:"none", stroke:"var(--axis)", "stroke-width":"1.2", "stroke-dasharray":"4 3"}));
+  svg.appendChild(el("text", {x:px+8, y:y+boxH+42, "font-size":"10.5", fill:"var(--ink-3)"},
+    "cached responses replay forever — CI never calls a model"));
+
+  $("pipeline-svg").appendChild(svg);
 }
 
-function point(panel) {
-  const s = DATA.scenarios[current];
-  const ai = Math.max(0, s.alphas.indexOf(ALPHA));
-  return panel.grid[tolStep * s.alphas.length + ai];
+/* ---------------- stack ---------------- */
+function renderStack(){
+  $("stack").innerHTML = D.stack.map(g => `
+    <div class="sgroup">
+      <h3>${g.title}</h3>
+      <p>${g.blurb}</p>
+      ${g.items.map(t => `
+        <div class="tech">
+          <div class="t"><b>${t.name}</b><code>${t.module.replace("agentgate.","")}</code></div>
+          <div class="d">${t.what}</div>
+        </div>`).join("")}
+    </div>`).join("");
 }
 
-function render() {
-  const s = DATA.scenarios[current];
-  for (const b of $("picker").children) b.setAttribute("aria-pressed", b.dataset.k === current);
+/* ---------------- model comparison ---------------- */
+function renderModels(){
+  const M = D.models;
+  if (!M.models.length){ $("models-svg").remove(); return; }
+  const colors = ["var(--s1)", "var(--s2)"];
 
-  $("s1-title").textContent = s.title;
-  $("s1-change").textContent = s.change;
-  $("s1-why").textContent = s.why;
+  $("mlegend").innerHTML = M.models.map((m,i) =>
+    `<span><i style="background:${colors[i]}"></i>${m.label}</span>`).join("");
 
-  renderGrid($("grid-before"), s.tasks, "b");
-  renderGrid($("grid-after"), s.tasks, "c");
+  const W = 720, padL = 176, padR = 60, rowH = 46, top = 18;
+  const H = top + M.rows.length*rowH + 26;
+  const svg = $("models-svg");
+  svg.innerHTML = "";
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const x = v => padL + v*(W-padL-padR);
 
-  const moved = s.tasks.filter(t => t.s !== "same").length;
-  $("s3-summary").textContent =
-    `${s.naive.describe} ${moved} of ${s.tasks.length} test cases changed outcome.`;
+  for (let t=0; t<=1.0001; t+=0.25){
+    svg.appendChild(el("line", {x1:x(t), y1:top-6, x2:x(t), y2:top+M.rows.length*rowH,
+      stroke:"var(--grid)", "stroke-width":"1"}));
+    svg.appendChild(el("text", {x:x(t), y:H-8, "text-anchor":"middle", "font-size":"10.5",
+      fill:"var(--ink-3)", "font-family":"var(--mono)"}, t.toFixed(2)));
+  }
 
-  const [cls, txt] = NAIVE_TAG[s.naive.verdict];
-  $("naive-call").innerHTML = `<span class="tag ${cls}">${txt}</span>`;
-  $("naive-why").textContent = s.naive.verdict === "BLOCK"
-    ? `It fell by more than ${pct(s.naive.threshold)}, so the rule fires. It has no way to know `
-      + `whether that drop is meaningful.`
-    : `It didn't fall by more than ${pct(s.naive.threshold)}, so the rule stays quiet. It only `
-      + `ever looks at the average.`;
+  M.rows.forEach((row, i) => {
+    const yb = top + i*rowH;
+    svg.appendChild(el("text", {x:padL-14, y:yb+rowH/2+4, "text-anchor":"end",
+      "font-size":"12", fill:"var(--ink-2)"}, row.label));
+    row.series.forEach((pt, j) => {
+      if (!pt) return;
+      const y = yb + 15 + j*15;
+      const c = colors[j];
+      if (pt.lo !== null){
+        svg.appendChild(el("line", {x1:x(pt.lo), y1:y, x2:x(pt.hi), y2:y, stroke:c,
+          "stroke-width":"2", opacity:"0.5", "stroke-linecap":"round"}));
+        for (const v of [pt.lo, pt.hi])
+          svg.appendChild(el("line", {x1:x(v), y1:y-3.5, x2:x(v), y2:y+3.5, stroke:c,
+            "stroke-width":"1.8"}));
+      }
+      svg.appendChild(el("circle", {cx:x(pt.v), cy:y, r:"4.5", fill:c,
+        stroke:"var(--surface)", "stroke-width":"2"}));
+      const ttl = el("title", {});
+      ttl.textContent = `${M.models[j].label} — ${row.label}: ${pt.v.toFixed(3)}`
+        + (pt.lo===null ? "" : ` [${pt.lo.toFixed(3)}, ${pt.hi.toFixed(3)}]`);
+      svg.appendChild(ttl);
+    });
+  });
 
-  $("gate-call").innerHTML =
-    `<span class="tag ${GATE_TAG[s.gate_verdict]}">${s.gate_headline}</span>`;
-  $("gate-why").textContent = s.gate_body;
-
-  $("verdict-note").innerHTML = s.agrees
-    ? `<p class="agree">Both checks agree here \\u2014 and that matters. A gate that only ever
-       disagreed with common sense would just be contrarian.</p>`
-    : `<div class="disagree"><strong>They disagree, and the normal check is the one that's
-       wrong.</strong> ${s.lesson}</div>`;
-
-  const panel = s.panels[metricIndex];
-  if (!panel) return;
-  const pt = point(panel);
-  $("tol-value").textContent = pts(pt.m);
-  $("tol").value = tolStep;
-  $("tol-verdict").innerHTML =
-    `<span class="tag ${GATE_TAG[pt.v] || "plain"}">${TOL_WORDS[pt.v] || pt.v}</span>`;
-
-  $("t-base").textContent = panel.baseline.toFixed(3);
-  $("t-cand").textContent = panel.candidate.toFixed(3);
-  $("t-delta").textContent = (panel.delta >= 0 ? "+" : "") + panel.delta.toFixed(3);
-  $("t-n").textContent = panel.n_units;
-  $("t-mde").textContent = pt.mde === null ? "\\u2014" : pt.mde.toFixed(3);
+  const head = `<thead><tr><th>Metric</th>${M.models.map(m =>
+    `<th class="n">${m.label}</th>`).join("")}</tr></thead>`;
+  const body = M.rows.map(r => `<tr><td>${r.label}</td>${r.series.map(p =>
+    `<td class="n">${p ? p.v.toFixed(3) : "—"}</td>`).join("")}</tr>`).join("")
+    + `<tr><td>Tokens spent</td>${M.tokens.map(t =>
+        `<td class="n">${t===null?"—":t.toLocaleString()}</td>`).join("")}</tr>`;
+  $("mtable").innerHTML = head + `<tbody>${body}</tbody>`;
 }
 
-renderHooks();
-renderPicker();
-renderMetrics();
-$("tol").oninput = e => { tolStep = +e.target.value; render(); };
+renderStats();
+renderTabs();
+pipeline();
+renderStack();
+renderModels();
 render();
 """
 
@@ -507,16 +967,17 @@ PAGE = f"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AgentGate &mdash; did your AI agent actually get worse?</title>
-<meta name="description" content="A CI check that tells you whether your AI agent really
-regressed or whether the score just moved. Walk through real examples where the obvious answer
-is wrong.">
+<title>AgentGate — statistical regression gate for LLM agents</title>
+<meta name="description" content="A CI gate that blocks a pull request only when an AI agent has
+statistically significantly regressed. Paired non-inferiority testing, cluster-robust errors,
+BH-FDR across 42 metrics, LLM-as-judge with bias controls, and an UNDERPOWERED verdict.">
+<meta property="og:title" content="AgentGate — ship agent changes on evidence, not vibes">
+<meta property="og:description" content="Statistical evaluation infrastructure for LLM agents:
+paired non-inferiority testing, trajectory metrics, controlled LLM-as-judge, τ²-bench.">
 <style>{STYLE}</style>
 </head>
 <body>
-{nav("demo")}
 {BODY}
-{footer("__GENERATED__")}
 <script>{SCRIPT}</script>
 </body>
 </html>
