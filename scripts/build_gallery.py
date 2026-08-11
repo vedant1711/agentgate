@@ -1,8 +1,19 @@
-"""Build the static report gallery landing page (K3).
+"""Build the example-report gallery.
 
-GitHub Pages never sleeps, so this is a guaranteed-instant surface. It indexes whatever
-reports the baseline workflow actually generated, so it can never advertise a report that
-does not exist.
+The previous version listed eight cards labelled with fault names and verdicts, and assumed the
+reader already knew what a "report" was, what a "faulted candidate" meant, and why
+`UNDERPOWERED` was interesting. It read as a list of files.
+
+A reader arriving here needs three things answered before a single link is worth clicking:
+
+* **What is this thing I would be opening?** The report AgentGate posts on a pull request.
+* **Why are there eight of them?** Because each is a different way an agent breaks, and the
+  point is that the gate reaches a *different* verdict for each.
+* **Which one should I look at first?** The two where the obvious answer is wrong.
+
+So the page groups reports by what the gate decided, explains each verdict in plain language,
+and leads with the two disagreements. The scenario descriptions come from the same copy the demo
+uses, so the two pages cannot describe the same scenario differently.
 """
 
 from __future__ import annotations
@@ -11,108 +22,151 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from agentgate.demo import expected_verdict
-from agentgate.faults import SIGNATURES
+from agentgate.report.chrome import STYLE, VERDICT_CLASS, footer, nav
+from agentgate.report.story import copy_for, verdict_copy
 
 SITE = Path("site")
 REPORTS = SITE / "reports"
 
-_PAGE = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AgentGate — report gallery</title>
-<style>
-  :root {{ --bg:#fff; --fg:#1f2328; --muted:#57606a; --line:#d0d7de; --panel:#f6f8fa; }}
-  @media (prefers-color-scheme: dark) {{
-    :root {{ --bg:#0d1117; --fg:#e6edf3; --muted:#8b949e; --line:#30363d; --panel:#161b22; }}
-  }}
-  * {{ box-sizing: border-box; }}
-  body {{ margin:0; background:var(--bg); color:var(--fg);
-    font:16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif; }}
-  .wrap {{ max-width:960px; margin:0 auto; padding:3rem 1.25rem 5rem; }}
-  h1 {{ font-size:2rem; margin:0 0 .5rem; }}
-  .lede {{ color:var(--muted); font-size:1.05rem; margin:0 0 2rem; }}
-  .grid {{ display:grid; gap:1rem; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); }}
-  a.card {{ display:block; text-decoration:none; color:inherit; background:var(--panel);
-    border:1px solid var(--line); border-radius:10px; padding:1.1rem 1.2rem; }}
-  a.card:hover {{ border-color:var(--fg); }}
-  .verdict {{ display:inline-block; font-size:.72rem; font-weight:700; letter-spacing:.04em;
-    padding:.15rem .5rem; border-radius:999px; color:#fff; margin-bottom:.6rem; }}
-  .card h2 {{ font-size:1rem; margin:.1rem 0 .35rem; }}
-  .card p {{ margin:0; color:var(--muted); font-size:.88rem; }}
-  footer {{ margin-top:3rem; padding-top:1.25rem; border-top:1px solid var(--line);
-    color:var(--muted); font-size:.85rem; }}
-  code {{ background:var(--panel); padding:.1rem .35rem; border-radius:4px; font-size:.85em; }}
-</style>
-</head>
-<body><div class="wrap">
-<h1>AgentGate — report gallery</h1>
-<p class="lede">
-  Every report below was produced by the real pipeline: a baseline and a deliberately faulted
-  candidate, run through agents, metrics, statistics, and the gate. Nothing here is hand-written.
-  Each fault is a failure class that actually happens to agent systems — a prompt someone
-  "simplified", a tool renamed in a refactor, a cost-driven model downgrade.
-</p>
+# Grouped by verdict so the page teaches the three-way rule rather than listing files. Ordered so
+# the disagreements come first: those are the reports worth opening.
+VERDICT_ORDER = ("SAFETY_FAIL", "UNDERPOWERED", "REGRESSION", "PASS")
 
-<div class="grid">
-{cards}
-</div>
-
-<footer>
-  Generated {generated}. Suite <code>crm_ops</code> — 70 tasks in 14 scenario clusters, run
-  K=4 times each, entirely offline.
-  Verdicts: <strong>PASS</strong> means non-inferiority was <em>proven</em>, not merely unproven
-  bad. <strong>UNDERPOWERED</strong> means the suite genuinely cannot tell — the answer a naive
-  threshold gate can never give.
-</footer>
-</div></body></html>
-"""
-
-COLOURS = {
-    "PASS": "#1a7f37",
-    "REGRESSION": "#cf222e",
-    "SAFETY_FAIL": "#82071e",
-    "UNDERPOWERED": "#9a6700",
-    "ANY": "#57606a",
+VERDICT_INTRO: dict[str, str] = {
+    "SAFETY_FAIL": (
+        "The agent did something it must never do. These skip the statistics entirely — no "
+        "average is good enough to make up for a security failure."
+    ),
+    "UNDERPOWERED": (
+        "The numbers moved, but not by enough to tell a real change from ordinary variation. "
+        "This is the verdict a threshold rule can never give, and the one that prevents false "
+        "alarms."
+    ),
+    "REGRESSION": (
+        "The agent really did get worse, by more than the tolerance the policy declared. These "
+        "block the merge."
+    ),
+    "PASS": (
+        "Non-inferiority was established — not merely 'we found no problem', but 'the suite was "
+        "big enough to have found one and did not'."
+    ),
 }
+
+
+def cards_for(verdict: str, reports: list[Path]) -> str:
+    """Render one verdict group's cards, or nothing when no report reached that verdict."""
+    matching = [r for r in reports if expected_verdict(r.stem) == verdict]
+    if not matching:
+        return ""
+
+    cards = []
+    for report in sorted(matching):
+        copy = copy_for(report.stem)
+        plain = verdict_copy(verdict)
+        cards.append(
+            f'  <a class="next-card" href="reports/{report.name}">\n'
+            f'    <span class="tag {VERDICT_CLASS.get(verdict, "plain")}">'
+            f"{plain['headline']}</span>\n"
+            f'    <h3 style="margin:.6rem 0 .3rem;color:var(--ink)">{copy.title}</h3>\n'
+            f'    <p class="dim" style="font-size:.88rem;margin:0">{copy.change}</p>\n'
+            f"  </a>"
+        )
+
+    return (
+        f'<section class="wrap">\n'
+        f'  <span class="tag {VERDICT_CLASS.get(verdict, "plain")}">{verdict}</span>\n'
+        f'  <h2 style="margin-top:.7rem">{verdict_copy(verdict)["headline"]}</h2>\n'
+        f"  <p>{VERDICT_INTRO.get(verdict, '')}</p>\n"
+        f'  <div class="next">\n' + "\n".join(cards) + "\n  </div>\n</section>\n"
+    )
 
 
 def build() -> Path:
     """Write ``site/gallery.html`` indexing whatever reports exist.
 
-    The root is the interactive demo; the gallery is one click in from it.
+    The root is the demo; the gallery is one click in from it.
     """
     REPORTS.mkdir(parents=True, exist_ok=True)
-    cards: list[str] = []
-    for report in sorted(REPORTS.glob("*.html")):
-        scenario = report.stem
-        signature = SIGNATURES.get(scenario)
-        verdict = expected_verdict(scenario)
-        colour = COLOURS.get(verdict, COLOURS["ANY"])
-        description = (
-            signature.simulates
-            if signature
-            else "The no-op control: an identical candidate, which must pass."
-        )
-        cards.append(
-            f'  <a class="card" href="reports/{report.name}">\n'
-            f'    <span class="verdict" style="background:{colour}">{verdict}</span>\n'
-            f"    <h2>{scenario.replace('_', ' ')}</h2>\n"
-            f"    <p>{description}</p>\n"
-            f"  </a>"
+    reports = list(REPORTS.glob("*.html"))
+
+    if reports:
+        groups = "".join(cards_for(verdict, reports) for verdict in VERDICT_ORDER)
+    else:
+        groups = (
+            '<section class="wrap"><p class="dim">No reports were generated for this build. '
+            "Run <code>agentgate demo --scenario dropped_tool --html report.html</code> to "
+            "produce one.</p></section>\n"
         )
 
-    if not cards:
-        cards.append('  <p class="lede">No reports were generated for this build.</p>')
-
-    page = _PAGE.format(
-        cards="\n".join(cards),
-        generated=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
+    page = PAGE.format(
+        style=STYLE,
+        nav=nav("gallery"),
+        groups=groups,
+        footer=footer(datetime.now(UTC).strftime("%B %Y")),
     )
     target = SITE / "gallery.html"
     target.write_text(page, encoding="utf-8")
     return target
+
+
+PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentGate &mdash; example reports</title>
+<meta name="description" content="The report AgentGate posts on a pull request, for eight
+different ways an AI agent can break.">
+<style>{style}</style>
+</head>
+<body>
+{nav}
+<header class="hero wrap">
+  <p class="eyebrow">Example reports</p>
+  <h1>What AgentGate actually posts on your pull request</h1>
+  <p class="lede">
+    When the gate runs, it leaves a report like the ones below: the verdict, every metric with
+    its error bars, what the statistics could and could not establish, and how much evidence it
+    had to work with.
+  </p>
+  <p class="dim">
+    Each report here comes from a real run against the same 70-task suite &mdash; a healthy agent
+    against one that was deliberately broken in a specific, realistic way. Nothing is
+    hand-written. Notice that the gate reaches a <strong>different verdict for each kind of
+    breakage</strong>; that difference is the whole point.
+  </p>
+  <div class="row">
+    <a class="btn primary" href="./">Start with the walkthrough</a>
+    <a class="btn" href="docs/">Read the methodology</a>
+  </div>
+</header>
+
+{groups}
+<section class="wrap">
+  <p class="eyebrow">How to read one</p>
+  <h2>What you'll see inside</h2>
+  <div class="next">
+    <div class="card">
+      <h3>A verdict, and why</h3>
+      <p>Ship, block, or not enough evidence &mdash; with the reasoning, not just the label.</p>
+    </div>
+    <div class="card">
+      <h3>Every metric with error bars</h3>
+      <p>A number without a range is a guess. Each metric shows the interval it actually
+      supports.</p>
+    </div>
+    <div class="card">
+      <h3>What it could not tell you</h3>
+      <p>The smallest change this suite was capable of detecting, so you know what a pass does
+      and does not rule out.</p>
+    </div>
+  </div>
+</section>
+
+{footer}
+</body>
+</html>
+"""
 
 
 if __name__ == "__main__":

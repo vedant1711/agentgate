@@ -55,8 +55,10 @@ markdown_extensions:
       alternate_style: true
 
 nav:
-  - Home: index.md
+  - "← Interactive demo": https://vedant1711.github.io/agentgate/
+  - Start here: index.md
   - How it works:
+      - Architecture: architecture.md
       - Methodology: methodology.md
       - The living harness: harness.md
       - Metric catalogue: metrics.md

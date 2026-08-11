@@ -6,6 +6,53 @@ All notable changes to AgentGate are documented here. The format follows
 
 ## [Unreleased]
 
+### Rebuilt the demo around a story instead of a slider
+
+The old landing page opened with a control labelled "margin δ" over a chart of per-cluster
+differences. Both are the right things to show *eventually*, and neither means anything to a
+reader who has not yet been told what problem they solve. It was decorative, and feedback said so.
+
+The page now argues in the order a reader can follow:
+
+1. **The question**: you changed your agent — did you break it?
+2. **Two real runs where the obvious answer is wrong, in opposite directions.** A prompt-injection
+   breach that scores a perfect 100% and would be shipped by a threshold check, and a 21-point
+   drop that a threshold check blocks but the evidence does not establish. Both computed, not
+   illustrated.
+3. **A scenario you step through**: what changed in one sentence, all 70 tasks as before/after
+   squares, what a normal CI check concludes, what AgentGate concludes, and why they differ.
+4. **Only then the tolerance control**, relabelled from "margin δ" to *"I'd accept the agent being
+   up to N points worse"* — a question the reader is by then already asking.
+
+Metric identifiers no longer appear in reader-facing copy: `outcome.task_success` reads as
+"finished the job correctly". A test asserts no raw identifier leaks onto the page.
+
+**The load-bearing addition is a test, not a paragraph.** The page claims in prose that a
+threshold check is wrong in both directions. Prose does not fail a build when it stops matching
+reality, so `test_the_pages_headline_claim_is_still_true` pins both disagreements against the real
+pipeline. If a change ever made those scenarios agree with a threshold rule, the published page
+would be lying about its own output — and CI fails first.
+
+**The report gallery** previously listed eight cards labelled with fault names and verdicts, and
+assumed the reader knew what a report was. It now says what the thing is (what AgentGate posts on
+a pull request), groups reports **by verdict** so the page teaches the three-way rule, leads with
+the two disagreements, and describes each scenario in the same words the demo uses — from the same
+source, so the two pages cannot describe a scenario differently.
+
+**Navigation** is now shared. `agentgate/report/chrome.py` holds one palette, one nav and one
+footer for every generated page, and the docs nav carries a link back to the demo. Previously the
+two pages had separate stylesheets and no route between them.
+
+**Docs** gained `architecture.md`: the seven layers, the two-speed record/replay split, the verdict
+decision tree, why clustering changes the answer, the judge's bias controls, and what goes into
+the reproducibility hash — seven mermaid diagrams in total.
+
+**README** rewritten to lead with the problem in plain language and the two-direction failure
+table, rather than with statistical vocabulary.
+
+Fixed along the way: the naive-threshold rule compared floats exactly, so a drop of exactly the
+threshold blocked or shipped depending on floating-point dust.
+
 ## [0.1.0] — 2026-08-09
 
 First release. The gate works, the harness runs, and both have been exercised against real
